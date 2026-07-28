@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RevAc Field Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="manifest" href="/mobile/manifest.json">
+<style>
+  :root {
+    --green-900: #06281D;
+    --green-800: #0B3D2E;
+    --green-700: #13543F;
+    --green-600: #1C6B51;
+    --green-100: #E3EFE9;
+    --brass:     #C08B2C;
+    --brass-lt:  #F3E6C8;
+    --ink:       #0F1F19;
+    --ink-60:    #52635C;
+    --ink-40:    #8A9992;
+    --canvas:    #F2F5F3;
+    --surface:   #FFFFFF;
+    --line:      #DCE5E0;
+    --danger:    #A32E2E;
+    --danger-bg: #FBEDED;
+    --warn:      #9A6B00;
+    --warn-bg:   #FDF3DC;
+    --ok:        #1C6B51;
+    --ok-bg:     #E3EFE9;
+    --radius:    10px;
+    --shadow:    0 1px 2px rgba(6,40,29,.06), 0 8px 24px rgba(6,40,29,.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--canvas);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+  }
+
+  .mono, .num { font-family: 'IBM Plex Mono', monospace; }
+
+  /* Login Styles */
+  #login {
+    padding: 32px 24px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: var(--green-900);
+    color: #fff;
+  }
+  .login-header {
+    margin-bottom: 32px;
+    text-align: center;
+  }
+  .login-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .login-header p {
+    color: #B9CFC5;
+    font-size: 14px;
+  }
+  .login-card {
+    background: var(--surface);
+    color: var(--ink);
+    padding: 24px;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .login-card h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  #loginErr {
+    display: none;
+    background: var(--danger-bg);
+    color: var(--danger);
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(163,46,46,.15);
+  }
+  .field {
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--ink-60);
+  }
+  .field input, .field select, .field textarea {
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    width: 100%;
+    outline: none;
+    background: #fff;
+  }
+  .field input:focus, .field select:focus {
+    border-color: var(--green-600);
+  }
+  .btn-primary {
+    background: var(--green-600);
+    color: #fff;
+    border: none;
+    padding: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 14px;
+    transition: background 0.2s;
+  }
+  .btn-primary:hover {
+    background: var(--green-700);
+  }
+
+  /* App Shell */
+  #app {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+  }
+  header {
+    background: var(--green-800);
+    color: #fff;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header .avatar {
+    width: 38px;
+    height: 38px;
+    background: var(--brass);
+    color: #fff;
+    font-weight: 600;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+  header .user-info {
+    flex: 1;
+  }
+  header .user-info b {
+    display: block;
+    font-size: 14px;
+  }
+  header .user-info small {
+    display: block;
+    color: #B9CFC5;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  header .net-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 99px;
+    background: var(--ok);
+    color: #fff;
+    text-transform: uppercase;
+  }
+  header .net-status.off {
+    background: var(--danger);
+  }
+  header .btn-signout {
+    background: transparent;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    text-decoration: underline;
+  }
+
+  /* Sync Bar */
+  .queue-bar {
+    display: none;
+    background: var(--warn-bg);
+    color: var(--warn);
+    padding: 10px 16px;
+    font-size: 12.5px;
+    font-weight: 500;
+    border-bottom: 1px solid rgba(154,107,0,.15);
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .queue-bar.on {
+    display: flex;
+  }
+  .btn-sync {
+    background: var(--warn);
+    color: #fff;
+    border: none;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* Main Views */
+  main {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    padding-bottom: 72px; /* nav clearance */
+  }
+  .view {
+    display: none;
+  }
+  .view.on {
+    display: block;
+  }
+
+  /* Navigation */
+  nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-width: 480px;
+    margin: 0 auto;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    display: flex;
+    height: 56px;
+    z-index: 10;
+  }
+  nav button {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--ink-60);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+  }
+  nav button.on {
+    color: var(--green-600);
+    font-weight: 600;
+  }
+
+  /* Search & Lists */
+  .search-wrapper {
+    margin-bottom: 16px;
+  }
+  .search-wrapper input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    outline: none;
+    font-size: 14px;
+  }
+  .payer-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .payer {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .payer:active {
+    transform: scale(.98);
+  }
+  .payer .ini {
+    width: 36px;
+    height: 36px;
+    background: var(--green-100);
+    color: var(--green-700);
+    font-weight: 600;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .payer .info {
+    flex: 1;
+    min-width: 0;
+  }
+  .payer .info b {
+    display: block;
+    font-size: 13.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .payer .info small {
+    display: block;
+    color: var(--ink-60);
+    font-size: 11.5px;
+    margin-top: 2px;
+  }
+  .payer .due {
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .payer .due b {
+    display: block;
+    font-size: 14px;
+  }
+  .payer .due small {
+    display: block;
+    font-size: 10.5px;
+    color: var(--ink-60);
+  }
+  .tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .tag.ok {
+    background: var(--ok-bg);
+    color: var(--ok);
+  }
+  .empty {
+    text-align: center;
+    padding: 40px 16px;
+    color: var(--ink-60);
+  }
+
+  /* Payment Form Styles */
+  .form-section {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .form-section h3 {
+    font-size: 14px;
+    margin-bottom: 12px;
+    color: var(--ink-60);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .kv {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--canvas);
+    font-size: 13.5px;
+  }
+  .kv:last-child { border: none; }
+  .kv span { color: var(--ink-60); }
+  .kv b { font-weight: 600; }
+
+  .channel-picker {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .channel-picker button {
+    flex: 1;
+    background: var(--canvas);
+    border: 1px solid var(--line);
+    padding: 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--ink-60);
+    outline: none;
+  }
+  .channel-picker button.sel {
+    background: var(--green-600);
+    color: #fff;
+    border-color: var(--green-600);
+  }
+
+  /* Receipt Styles */
+  .receipt {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 16px;
+    text-align: center;
+    box-shadow: var(--shadow);
+  }
+  .receipt .amt {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--green-900);
+    margin: 12px 0;
+  }
+  .receipt .ok {
+    display: inline-block;
+    background: var(--ok-bg);
+    color: var(--ok);
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 99px;
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+  .receipt svg.qr {
+    width: 140px;
+    height: 140px;
+    margin: 16px auto;
+    display: block;
+    border: 1px solid var(--line);
+    padding: 8px;
+    background: #fff;
+  }
+
+  /* Status Summary */
+  .status-summary {
+    background: var(--green-900);
+    color: #fff;
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .status-summary h3 {
+    font-size: 11.5px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #B9CFC5;
+    margin-bottom: 16px;
+  }
+  .status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .status-item {
+    border-left: 2px solid var(--brass);
+    padding-left: 10px;
+  }
+  .status-item span {
+    display: block;
+    font-size: 11px;
+    color: #B9CFC5;
+  }
+  .status-item b {
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  /* Toast notification */
+  #toast {
+    position: fixed;
+    bottom: 72px;
+    left: 16px;
+    right: 16px;
+    z-index: 100;
+    pointer-events: none;
+  }
+  .tst {
+    background: var(--green-900);
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    opacity: 0.95;
+    animation: slideUp 0.3s ease-out;
+  }
+  .tst.bad {
+    background: var(--danger);
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 0.95; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN SCREEN ================= -->
+<section id="login">
+  <div class="login-header">
+    <h1>RevAc Field</h1>
+    <p>Revenue Administration &amp; Collection Suite</p>
+  </div>
+  
+  <div class="login-card">
+    <h2>Agent Sign In</h2>
+    <div id="loginErr"></div>
+    <div class="field">
+      <label for="u">Username</label>
+      <input type="text" id="u" placeholder="e.g. agent1" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="p">Password</label>
+      <input type="password" id="p" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn-primary" onclick="doLogin()">Sign In</button>
+  </div>
+</section>
+
+<!-- ================= APP INTERFACE ================= -->
+<div id="app">
+  <header>
+    <div class="avatar" id="av">AG</div>
+    <div class="user-info">
+      <b id="agName">—</b>
+      <small id="agWard">—</small>
+    </div>
+    <span class="net-status" id="net">Online</span>
+    <button class="btn-signout" onclick="signOut()">Sign Out</button>
+  </header>
+
+  <!-- Offline Sync Bar -->
+  <div class="queue-bar" id="queueBar">
+    <span id="queueTxt">0 records waiting to sync</span>
+    <button class="btn-sync" onclick="syncNow()">Sync Now</button>
+  </div>
+
+  <main>
+    
+    <!-- VIEW: Payers List / Worklist -->
+    <section class="view on" id="v-list">
+      <div class="search-wrapper">
+        <input type="text" id="search" placeholder="Search payer name or reference..." oninput="renderList()">
+      </div>
+      <div class="payer-list" id="listBody">
+        <div class="empty">Loading ward worklist...</div>
+      </div>
+    </section>
+
+    <!-- VIEW: Payment Collection -->
+    <section class="view" id="v-collect">
+      <div class="form-section">
+        <h3>Selected Payer</h3>
+        <div id="selPayer">
+          <div class="empty">Choose a payer from the worklist</div>
+        </div>
+      </div>
+
+      <div class="form-section" id="billBox" style="display:none">
+        <h3>Unpaid Bills</h3>
+        <div id="billList"></div>
+      </div>
+
+      <div class="form-section" id="payBox" style="display:none">
+        <h3>Process Payment</h3>
+        <div class="field">
+          <label>Payment Channel</label>
+          <div class="channel-picker" id="chanPick">
+            <button class="sel" data-ch="POS">POS</button>
+            <button data-ch="OTC">Branch</button>
+            <button data-ch="IB_MB">Transfer</button>
+            <button data-ch="USSD">USSD</button>
+            <button data-ch="FIRSTMONIE">Agent</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="amt">Amount (₦)</label>
+          <input type="number" id="amt" step="0.01" min="0.01">
+        </div>
+        <div class="field">
+          <label for="bankRef">Bank Reference (Optional)</label>
+          <input type="text" id="bankRef" placeholder="e.g. BNK123456789">
+        </div>
+        <button class="btn-primary" onclick="takePayment()">Confirm Payment</button>
+      </div>
+    </section>
+
+    <!-- VIEW: Receipt details -->
+    <section class="view" id="v-receipt">
+      <div id="receiptBody"></div>
+      <button class="btn-primary" style="margin-top:16px" onclick="go('list')">Return to Worklist</button>
+    </section>
+
+    <!-- VIEW: Enumeration / Payer Registration -->
+    <section class="view" id="v-enum">
+      <div class="form-section">
+        <h3>Register Payer</h3>
+        <div id="enumOut" style="margin-bottom:12px"></div>
+        <div class="field">
+          <label for="n_name">Full Name / Business Name</label>
+          <input type="text" id="n_name" placeholder="Enter name">
+        </div>
+        <div class="field">
+          <label for="n_type">Type</label>
+          <select id="n_type">
+            <option value="INDIVIDUAL">Individual</option>
+            <option value="BUSINESS" selected>Business</option>
+            <option value="GOVERNMENT">Government</option>
+            <option value="NGO">NGO</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="n_phone">Phone Number</label>
+          <input type="text" id="n_phone" placeholder="e.g. 08030000000">
+        </div>
+        <div class="field">
+          <label for="n_addr">Physical Address</label>
+          <textarea id="n_addr" rows="2" placeholder="Street name and number"></textarea>
+        </div>
+        <div class="field">
+          <label for="n_geo">GPS Location</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="n_geo" readonly placeholder="Not captured" style="background:#f9f9f9">
+            <button class="btn-primary" style="width:auto;padding:0 16px;background:var(--brass)" onclick="grabGps()">GPS</button>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="registerPayer()">Register &amp; Save</button>
+      </div>
+    </section>
+
+    <!-- VIEW: Status / Sync Details -->
+    <section class="view" id="v-status">
+      <div class="status-summary">
+        <h3>Today's Tally</h3>
+        <div class="status-grid">
+          <div class="status-item">
+            <span>Collected</span>
+            <b id="tCash">₦0</b>
+          </div>
+          <div class="status-item">
+            <span>Payments</span>
+            <b id="tTxn">0</b>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h3>Agent Information</h3>
+        <div class="kv"><span>Code</span><b id="rCode">—</b></div>
+        <div class="kv"><span>Assigned Ward</span><b id="rWard">—</b></div>
+        <div class="kv"><span>Payer Records</span><b id="rPayers">0</b></div>
+      </div>
+
+      <div class="form-section">
+        <h3>Sync &amp; Queue Status</h3>
+        <div class="kv"><span>Pending Sync</span><b id="rQueue">0</b></div>
+        <div class="kv"><span>Last Sync Time</span><b id="rSync">—</b></div>
+        <div class="kv"><span>Collected (Gross)</span><b id="rCash">₦0.00</b></div>
+        <div class="kv"><span>Collections Count</span><b id="rTxn">0</b></div>
+        <button class="btn-primary" style="margin-top:16px;background:var(--green-600)" onclick="syncNow()">Force Sync</button>
+      </div>
+    </section>
+
+  </main>
+
+  <nav>
+    <button class="on" data-v="list" onclick="go('list')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+      Worklist
+    </button>
+    <button data-v="collect" onclick="go('collect')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="12" y1="4" x2="12" y2="20"></line><line x1="2" y1="12" x2="22" y2="12"></line></svg>
+      Collect
+    </button>
+    <button data-v="enum" onclick="go('enum')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+      Register
+    </button>
+    <button data-v="status" onclick="go('status')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+      Status
+    </button>
+  </nav>
+</div>
+
+<div id="toast"></div>
+<script src="/mobile/app.js"></script>
+</body>
+</html>

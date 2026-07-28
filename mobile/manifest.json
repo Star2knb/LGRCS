@@ -1,0 +1,21 @@
+{
+  "short_name": "RevAc Field",
+  "name": "RevAc Revenue Collection Suite",
+  "start_url": "/m/",
+  "background_color": "#06281D",
+  "theme_color": "#0B3D2E",
+  "display": "standalone",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'><rect width='192' height='192' rx='40' fill='%230B3D2E'/><text x='96' y='125' font-family='Arial' font-weight='bold' font-size='85' fill='%23C08B2C' text-anchor='middle'>RA</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'><rect width='512' height='512' rx='100' fill='%230B3D2E'/><text x='256' y='330' font-family='Arial' font-weight='bold' font-size='220' fill='%23C08B2C' text-anchor='middle'>RA</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
