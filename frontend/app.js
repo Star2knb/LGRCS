@@ -144,6 +144,13 @@ function go(page) {
   $('#pageTitle').textContent = title;
   $('#pageSub').textContent = sub;
   loadPage(page);
+  toggleSidebar(false);
+}
+
+function toggleSidebar(force) {
+  const open = force !== undefined ? force : !document.querySelector('.sidebar').classList.contains('open');
+  document.querySelector('.sidebar').classList.toggle('open', open);
+  $('#sidebarBackdrop').classList.toggle('on', open);
 }
 
 function loadPage(page) {

@@ -67,9 +67,11 @@
       <a href="/m" target="_blank" style="color:var(--brass);text-decoration:none">Open field agent app →</a>
     </div>
   </aside>
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar(false)"></div>
 
   <div class="main">
     <header class="topbar">
+      <button class="menu-btn" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
       <div>
         <h2 id="pageTitle">Revenue Dashboard</h2>
         <div class="sub" id="pageSub">Real-time position across collections, bills and payers</div>
