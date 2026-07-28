@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RevAc — AMAC Revenue Administration &amp; Collection</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/frontend/styles.css">
+</head>
+<body>
+
+<!-- ================= SIGN IN ================= -->
+<section id="login">
+  <div class="login-brand">
+    <div class="logo">
+      <div class="logo-mark">RA</div>
+      <div><b>RevAc</b><small>Revenue Administration &amp; Collection</small></div>
+    </div>
+    <div>
+      <h1>Every naira billed,<br>collected, receipted<br>and reconciled.</h1>
+      <p>The unified revenue platform for Abuja Municipal Area Council — enumeration through
+         to enforcement, with every sub-consultant on one accountable system.</p>
+      <div class="channels">
+        <span>POS terminals</span><span>Branch teller</span><span>Internet &amp; mobile banking</span>
+        <span>USSD</span><span>Agent banking</span>
+      </div>
+    </div>
+    <div style="font-size:11.5px;color:#8FAB9F">
+      Alliance Consulting &amp; Digital Solutions Ltd — Lead Revenue Technology Consultant
+    </div>
+  </div>
+
+  <div class="login-form">
+    <div class="login-card">
+      <h2>Sign in</h2>
+      <p>Use your Council or sub-consultant credentials.</p>
+      <div id="loginError"></div>
+      <div class="field"><label for="u">Username</label><input id="u" autocomplete="username"></div>
+      <div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password"></div>
+      <button class="btn-primary" style="width:100%" onclick="doLogin()">Sign in</button>
+
+      <div class="demo-accounts">
+        <h4>Demonstration accounts</h4>
+        <button onclick="quick('admin')"><b>admin</b><small>Council Revenue Administrator — full access</small></button>
+        <button onclick="quick('consultant1')"><b>consultant1</b><small>Northgate Revenue Services — own portfolio only</small></button>
+        <button onclick="quick('stakeholder')"><b>stakeholder</b><small>Council stakeholder — global performance view</small></button>
+        <button onclick="quick('agent1')"><b>agent1</b><small>Field agent — use the mobile app at /m</small></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= APP SHELL ================= -->
+<div id="app">
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <div class="logo">
+        <div class="logo-mark">RA</div>
+        <div><b>RevAc</b><small>AMAC · FCT</small></div>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot">
+      ACDSL — Lead Revenue Technology Consultant<br>
+      <a href="/m" target="_blank" style="color:var(--brass);text-decoration:none">Open field agent app →</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <h2 id="pageTitle">Revenue Dashboard</h2>
+        <div class="sub" id="pageSub">Real-time position across collections, bills and payers</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn-ghost btn-sm" onclick="loadPage(state.page)">Refresh</button>
+      <div class="who">
+        <div class="avatar" id="avatar">CA</div>
+        <div><b id="whoName">—</b><small id="whoRole">—</small></div>
+      </div>
+      <button class="btn-ghost btn-sm" onclick="doLogout()">Sign out</button>
+    </header>
+
+    <main id="pages"></main>
+  </div>
+</div>
+
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head"><h3 id="modalTitle">—</h3>
+      <button class="btn-ghost btn-sm" onclick="closeModal()">Close</button></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/frontend/app.js"></script>
+</body>
+</html>
