@@ -40,6 +40,24 @@ Demo accounts (password `revac2026`):
 | `stakeholder` | Council stakeholder — global performance view |
 | `agent1`…`agent12` | Field collection agents — mobile app only |
 
+## Deploying
+
+The app needs a host that runs Python — it can't be served as static files
+(GitHub Pages, etc.), since the frontend and mobile app call a live Flask API.
+
+**[Render](https://render.com)** (recommended, has a free tier):
+1. Push this repo to GitHub (already done if you're reading this there).
+2. On Render: **New → Blueprint**, connect the repo. It reads
+   [`render.yaml`](render.yaml) automatically — no manual config needed.
+3. Deploy. Render builds with `backend/requirements.txt`, seeds the demo
+   database, and starts the app bound to the `$PORT` it assigns.
+
+**Railway** works the same way via the included [`Procfile`](Procfile) —
+create a new project from the repo and it will detect and run it.
+
+Either way, the demo database reseeds fresh on every restart, so it's not a
+place to store real production data as-is.
+
 ## Note on data
 
 Revenue items, rates, wards, sub-consultants and all transactions in the seed
