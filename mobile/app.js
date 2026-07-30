@@ -205,7 +205,7 @@ function showReceipt(receipt, amount, queued) {
   go('receipt');
   $('#receiptBody').innerHTML = `<div class="receipt">
     <div style="font-size:10.5px;letter-spacing:.09em;color:var(--ink-40);text-transform:uppercase">
-      Abuja Municipal Area Council</div>
+      Kuje Area Council</div>
     <div class="amt num">${money2(amount)}</div>
     <div class="ok" style="${queued ? 'background:#FDF3DC;color:#9A6B00' : ''}">
       ${queued ? 'Queued — syncs when online' : 'Payment confirmed'}</div>

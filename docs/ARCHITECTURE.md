@@ -1,8 +1,8 @@
 # RevAc Application Suite — Solution Architecture
 
-**Deployment:** Abuja Municipal Area Council (AMAC), Federal Capital Territory
+**Deployment:** Kuje Area Council (KAC), Federal Capital Territory
 **Lead Revenue Technology Consultant:** Alliance Consulting & Digital Solutions Ltd (ACDSL)
-**Document status:** Technical companion to the AMAC Revenue Computerisation Proposal (July 2026)
+**Document status:** Technical companion to the KAC Revenue Computerisation Proposal (July 2026)
 **Date:** July 2026
 
 ---
@@ -10,7 +10,7 @@
 ## 1. Purpose and scope
 
 This document describes the technical architecture of the RevAc (Revenue Administration &
-Collection) Application Suite as deployed for one FCT Area Council — AMAC — covering the web
+Collection) Application Suite as deployed for one FCT Area Council — KAC — covering the web
 portal, the field-agent mobile application, the API backend, the database schema, and the
 multi-channel e-payment integration layer.
 

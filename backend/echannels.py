@@ -213,7 +213,7 @@ class UssdAdapter(BaseChannelAdapter):
 
     # USSD menu tree served to the payer's handset
     MENU = {
-        "root": "Welcome to AMAC Revenue\n1. Pay a bill\n2. Check balance\n3. Verify receipt",
+        "root": "Welcome to KAC Revenue\n1. Pay a bill\n2. Check balance\n3. Verify receipt",
         "1": "Enter your Bill Reference:",
         "2": "Enter your Payer ID:",
         "3": "Enter Receipt Reference:",

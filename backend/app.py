@@ -2,7 +2,7 @@
 RevAc Application Suite — Backend API
 =====================================
 Alliance Consulting & Digital Solutions Ltd (ACDSL)
-Deployment: Abuja Municipal Area Council (AMAC), FCT
+Deployment: Kuje Area Council (KAC), FCT
 
 Serves:
   * REST API for the web portal and the field-agent mobile app
@@ -292,7 +292,7 @@ def create_payer():
         }), 409
 
     seq = query("SELECT COUNT(*) AS n FROM payer", one=True)["n"] + 1
-    payer_ref = f"AMAC-{datetime.now():%Y}-{seq:06d}"
+    payer_ref = f"C-{9000000 + seq}"
     nin = d.get("nin_bvn")
     payer_id = execute(
         """INSERT INTO payer (council_id, payer_ref, payer_type, full_name, phone, email,
@@ -415,7 +415,7 @@ def create_bill():
         return jsonify({"error": "Payer not found"}), 404
 
     seq = query("SELECT COUNT(*) AS n FROM bill", one=True)["n"] + 1
-    bill_ref = f"AMAC/{datetime.now():%Y}/{seq:06d}"
+    bill_ref = f"KAC/{datetime.now():%Y}/{seq:06d}"
     consultant_id = d.get("consultant_id") or g.current_user.get("consultant_id")
     due = d.get("due_date") or (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
 
@@ -457,13 +457,16 @@ def create_bill():
     return jsonify({"bill_id": bill_id, "bill_ref": bill_ref, "total_amount": round(total, 2)}), 201
 
 
-@app.get("/api/bills/<bill_ref>")
+@app.get("/api/bills/<path:bill_ref>")
 def bill_lookup(bill_ref):
-    """Public bill lookup — powers the citizen self-service portal and USSD."""
+    """Public bill lookup — powers the citizen self-service portal, USSD and the
+    printable Harmonised Demand Notice."""
     bill = query(
         """SELECT b.bill_id, b.bill_ref, b.total_amount, b.amount_paid, b.due_date, b.status,
-                  p.full_name, p.payer_ref
+                  b.issued_at, p.payer_id, p.full_name, p.payer_ref, p.phone, p.address,
+                  w.ward_name
            FROM bill b JOIN payer p ON p.payer_id = b.payer_id
+           LEFT JOIN ward_zone w ON w.ward_id = p.ward_id
            WHERE b.bill_ref = ?""", (bill_ref,), one=True)
     if not bill:
         return jsonify({"error": "No bill found with that reference"}), 404
@@ -474,6 +477,10 @@ def bill_lookup(bill_ref):
            JOIN assessment a ON a.assessment_id = bl.assessment_id
            JOIN revenue_item ri ON ri.revenue_item_id = a.revenue_item_id
            WHERE bl.bill_id = ?""", (bill["bill_id"],))
+    bill["prior_arrears"] = query(
+        """SELECT COALESCE(SUM(total_amount - amount_paid),0) AS a FROM bill
+           WHERE payer_id = ? AND bill_id <> ? AND status IN ('ISSUED','PART_PAID','OVERDUE')""",
+        (bill["payer_id"], bill["bill_id"]), one=True)["a"]
     return jsonify(bill)
 
 
@@ -737,7 +744,7 @@ def ussd_session():
     parts = [p for p in text.split("*") if p]
 
     if not parts:
-        return jsonify({"response": "CON Welcome to AMAC Revenue\n"
+        return jsonify({"response": "CON Welcome to KAC Revenue\n"
                                     "1. Pay a bill\n2. Check balance\n3. Verify receipt"})
     if parts[0] == "1":
         if len(parts) == 1:
@@ -1097,7 +1104,7 @@ def mobile_files(path):
 @app.get("/api/health")
 def health():
     return jsonify({"status": "ok", "service": "RevAc API",
-                    "council": "AMAC", "time": datetime.now().isoformat()})
+                    "council": "KAC", "time": datetime.now().isoformat()})
 
 
 if __name__ == "__main__":

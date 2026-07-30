@@ -1,12 +1,17 @@
 """
 RevAc — Database initialisation and demonstration seed
 ======================================================
-Creates revac.db from schema.sql and loads AMAC reference data.
+Creates revac.db from schema.sql and loads Kuje Area Council (KAC) reference data.
 
-Revenue items, rates, wards, sub-consultants and all transactions below are
-ILLUSTRATIVE DEMONSTRATION DATA. They are placeholders pending the
-Harmonisation Workstream (Component 3), the enumeration exercise, and the
-Council's approved rates schedule.
+Revenue items, codes and rates below are sourced from the Kuje Area Council
+Harmonised Revenue Item / Revenue Code list and the KAC Gazette (bye-laws and
+schedules of fees). Where the Gazette gives a clean, single tabulated figure
+(e.g. tenement rate by property type, contractor registration by category)
+it is used directly; items billed as one lump figure in practice (per the
+sample Harmonised Demand Notices distributed in January 2026) keep a single
+illustrative flat rate. All rates remain ILLUSTRATIVE pending Council
+confirmation of the current approved schedule — payers, transactions and
+amounts below are DEMONSTRATION DATA, not real ratepayer records.
 
 Run:  python seed.py
 """
@@ -38,13 +43,12 @@ cur = con.cursor()
 
 # --- Council & wards --------------------------------------------------------
 cur.execute("INSERT INTO council (council_code, council_name) VALUES (?,?)",
-            ("AMAC", "Abuja Municipal Area Council"))
+            ("KAC", "Kuje Area Council"))
 
 WARDS = [
-    ("AMAC-01", "City Centre"), ("AMAC-02", "Garki"), ("AMAC-03", "Wuse"),
-    ("AMAC-04", "Gwarinpa"), ("AMAC-05", "Karu"), ("AMAC-06", "Nyanya"),
-    ("AMAC-07", "Kabusa"), ("AMAC-08", "Gui"), ("AMAC-09", "Orozo"),
-    ("AMAC-10", "Jiwa"), ("AMAC-11", "Gwagwa"), ("AMAC-12", "Karshi"),
+    ("KAC-01", "Chibiri"), ("KAC-02", "Gaube"), ("KAC-03", "Gudaba"),
+    ("KAC-04", "Gwargwada"), ("KAC-05", "Kabi"), ("KAC-06", "Kuje"),
+    ("KAC-07", "Kwaku"), ("KAC-08", "Rubochi"), ("KAC-09", "Yenche"),
 ]
 for code, name in WARDS:
     cur.execute("INSERT INTO ward_zone (council_id, ward_code, ward_name) VALUES (1,?,?)",
@@ -64,10 +68,10 @@ for c, n, lvl in ROLES:
 
 # --- Sub-consultants (illustrative) ----------------------------------------
 CONSULTANTS = [
-    ("SC-001", "Northgate Revenue Services Ltd", "AMAC/RC/2026/011", 30.0),
-    ("SC-002", "Capital Assessment Partners Ltd", "AMAC/RC/2026/017", 32.5),
-    ("SC-003", "Trident Fiscal Consulting Ltd", "AMAC/RC/2026/024", 28.0),
-    ("SC-004", "Meridian Collections Ltd", "AMAC/RC/2026/031", 35.0),
+    ("SC-001", "Northgate Revenue Services Ltd", "KAC/RC/2026/011", 30.0),
+    ("SC-002", "Capital Assessment Partners Ltd", "KAC/RC/2026/017", 32.5),
+    ("SC-003", "Trident Fiscal Consulting Ltd", "KAC/RC/2026/024", 28.0),
+    ("SC-004", "Meridian Collections Ltd", "KAC/RC/2026/031", 35.0),
 ]
 for code, name, ref, rate in CONSULTANTS:
     cur.execute("""INSERT INTO sub_consultant (council_id, consultant_code, consultant_name,
@@ -78,7 +82,7 @@ for code, name, ref, rate in CONSULTANTS:
 # --- Users ------------------------------------------------------------------
 USERS = [
     ("admin",      "Council Revenue Administrator", 1, None, "COUNCIL_ADMIN"),
-    ("headrevenue", "Head of Revenue, AMAC",        2, None, "HEAD_REVENUE"),
+    ("headrevenue", "Head of Revenue, KAC",         2, None, "HEAD_REVENUE"),
     ("consultant1", "Manager, Northgate Revenue Services", 3, 1, "CONSULTANT"),
     ("consultant2", "Manager, Capital Assessment Partners", 3, 2, "CONSULTANT"),
     ("stakeholder", "Council Stakeholder",          5, None, "STAKEHOLDER"),
@@ -88,7 +92,7 @@ for uname, fname, role_id, cons_id, _ in USERS:
                      full_name, phone, email, password_hash)
                    VALUES (1,?,?,?,?,?,?,?)""",
                 (cons_id, role_id, uname, fname, "0803000" + str(random.randint(1000, 9999)),
-                 f"{uname}@amac.example.ng", h("revac2026")))
+                 f"{uname}@kac.example.ng", h("revac2026")))
 
 # --- Field agents -----------------------------------------------------------
 AGENT_NAMES = [
@@ -102,22 +106,22 @@ for i, name in enumerate(AGENT_NAMES):
                      full_name, phone, email, password_hash)
                    VALUES (1,?,4,?,?,?,?,?)""",
                 ((i % 4) + 1, f"agent{i+1}", name,
-                 "0806000" + str(1000 + i), f"agent{i+1}@amac.example.ng", h("revac2026")))
+                 "0806000" + str(1000 + i), f"agent{i+1}@kac.example.ng", h("revac2026")))
     uid = cur.lastrowid
     cur.execute("""INSERT INTO field_agent (user_id, consultant_id, agent_code,
                      assigned_ward_id, device_imei)
                    VALUES (?,?,?,?,?)""",
-                (uid, (i % 4) + 1, f"AG-{i+1:03d}", (i % 12) + 1,
+                (uid, (i % 4) + 1, f"AG-{i+1:03d}", (i % 9) + 1,
                  f"35{random.randint(10**12, 10**13-1)}"))
     agent_ids.append(cur.lastrowid)
 
 # --- Payment channels -------------------------------------------------------
 CHANNELS = [
-    ("POS", "POS Terminal", "Collecting Bank"),
-    ("OTC", "Over-the-Counter (Branch Teller)", "Collecting Bank"),
-    ("IB_MB", "Internet / Mobile Banking Transfer", "Collecting Bank"),
-    ("USSD", "USSD Payment", "Collecting Bank"),
-    ("FIRSTMONIE", "Agent Banking Network", "Collecting Bank"),
+    ("POS", "POS Terminal", "First Bank of Nigeria"),
+    ("OTC", "Over-the-Counter (Branch Teller)", "First Bank of Nigeria"),
+    ("IB_MB", "Internet / Mobile Banking Transfer", "First Bank of Nigeria"),
+    ("USSD", "USSD Payment", "First Bank of Nigeria"),
+    ("FIRSTMONIE", "Agent Banking Network", "First Bank of Nigeria"),
 ]
 for code, name, prov in CHANNELS:
     cur.execute("INSERT INTO payment_channel (channel_code, channel_name, provider) VALUES (?,?,?)",
@@ -128,21 +132,25 @@ for i in range(1, 21):
     cur.execute("""INSERT INTO pos_terminal (terminal_serial, bank_terminal_id,
                      assigned_agent_id, ward_id, status)
                    VALUES (?,?,?,?,?)""",
-                (f"POS-AMAC-{i:04d}", f"2{random.randint(10**6, 10**7-1)}",
-                 agent_ids[(i-1) % len(agent_ids)], ((i-1) % 12) + 1,
+                (f"POS-KAC-{i:04d}", f"2{random.randint(10**6, 10**7-1)}",
+                 agent_ids[(i-1) % len(agent_ids)], ((i-1) % 9) + 1,
                  "ACTIVE" if i <= 18 else "FAULTY"))
 
 # --- API clients ------------------------------------------------------------
 for i, (code, _, _) in enumerate(CHANNELS, start=1):
     cur.execute("""INSERT INTO api_client (client_code, client_name, api_key, secret_hash,
                      channel_id) VALUES (?,?,?,?,?)""",
-                (f"BANK-{code}", f"Collecting Bank — {code} integration",
+                (f"BANK-{code}", f"First Bank of Nigeria — {code} integration",
                  f"rk_live_{uuid.uuid4().hex[:24]}", h(f"demo-{code}-secret"), i))
 
-# --- Harmonised chart of revenue (illustrative) ----------------------------
+# --- Harmonised chart of revenue --------------------------------------------
+# Source: "Kuje New Revenue Item / Revenue Code" list (30010031-30010061) plus
+# the KAC Gazette (bye-laws/schedules). "Community and Development Levy" has
+# no code in that list yet but appears on every sample demand notice, so it is
+# given the next code in the same series (30010062).
 CATEGORIES = [
     ("RAT", "Rates"), ("LIC", "Licences and Permits"), ("FEE", "Fees and Charges"),
-    ("LEV", "Levies"), ("EAR", "Earnings and Sales"),
+    ("REG", "Registration and Professional Fees"), ("LEV", "Levies"),
 ]
 for code, name in CATEGORIES:
     cur.execute("INSERT INTO revenue_category (council_id, category_code, category_name) VALUES (1,?,?)",
@@ -150,30 +158,56 @@ for code, name in CATEGORIES:
 
 ITEMS = [
     # (category_idx, code, name, unit, rate, in_scope)
-    (1, "AMAC-RAT-001", "Tenement Rate — Residential", "per annum", 15000, 0),
-    (1, "AMAC-RAT-002", "Tenement Rate — Commercial", "per annum", 45000, 0),
-    (2, "AMAC-LIC-001", "Business Premises Registration (New)", "per annum", 25000, 1),
-    (2, "AMAC-LIC-002", "Business Premises Renewal", "per annum", 15000, 1),
-    (2, "AMAC-LIC-003", "Liquor Licence", "per annum", 50000, 1),
-    (2, "AMAC-LIC-004", "Signage and Advertisement Permit", "per unit p.a.", 35000, 1),
-    (2, "AMAC-LIC-005", "Building Plan Approval Fee", "per application", 120000, 1),
-    (3, "AMAC-FEE-001", "Market Stall / Shop Fee", "per annum", 18000, 1),
-    (3, "AMAC-FEE-002", "Abattoir and Slaughter Fee", "per head", 1500, 1),
-    (3, "AMAC-FEE-003", "Birth and Death Registration Fee", "per certificate", 2000, 1),
-    (3, "AMAC-FEE-004", "Marriage Registration Fee", "per registration", 20000, 1),
-    (3, "AMAC-FEE-005", "Motor Park Levy", "per vehicle per day", 500, 0),
-    (3, "AMAC-FEE-006", "Commercial Vehicle and Parking Fee", "per vehicle p.a.", 12000, 0),
-    (4, "AMAC-LEV-001", "Environmental and Sanitation Levy", "per annum", 24000, 0),
-    (4, "AMAC-LEV-002", "Public Convenience Levy", "per facility p.a.", 30000, 1),
-    (4, "AMAC-LEV-003", "Radio and Television Licence", "per annum", 6000, 1),
-    (5, "AMAC-EAR-001", "Sale of Council Bye-Laws and Forms", "per copy", 5000, 1),
-    (5, "AMAC-EAR-002", "Hire of Council Facilities", "per event", 75000, 1),
+    # -- Rates: Tenement Rate by property type (Gazette, Part on Tenement Rate) --
+    (1, "30010049-A", "Tenement Rate — Flat/Apartment", "per annum", 5000, 1),
+    (1, "30010049-B", "Tenement Rate — Bungalow", "per annum", 2000, 1),
+    (1, "30010049-C", "Tenement Rate — Self-Contained Apartment", "per annum", 1000, 0),
+    (1, "30010049-D", "Tenement Rate — Mansion", "per annum", 50000, 0),
+    (1, "30010049-E", "Tenement Rate — One/Two Bedroom", "per annum", 1000, 0),
+    # -- Licences and Permits --
+    (2, "30010051", "Liquor Licensing", "per annum", 50000, 1),
+    (2, "30010044", "Radio and Television Licence", "per annum", 6000, 1),
+    (2, "30010043", "Trade Licence, Private Lock-up Shops and Allied Matters", "per annum", 20000, 1),
+    (2, "30010034", "Control of Advertisement (Signage/Bill Boards)", "per unit p.a.", 25000, 1),
+    (2, "30010036", "Mobile Advert Permit", "per annum", 15000, 0),
+    (2, "30010056", "Communication Mast Licence", "per annum", 150000, 0),
+    (2, "30010045", "Tricycle (Keke)/Commercial Motorcycle Regulation", "per annum", 5000, 0),
+    (2, "30010052", "Wrong Parking / Corporate Parking Permit", "per annum", 10000, 0),
+    # -- Fees and Charges --
+    (3, "30010032", "Motor Parks Fee (Commercial Vehicles)", "per vehicle per day", 500, 0),
+    (3, "30010037", "Loading/Off-Loading, Control of Traffic", "per trip", 5000, 0),
+    (3, "30010038", "Cutting of Road Tar", "per application", 20000, 0),
+    (3, "30010040", "Numbering / Street Naming", "per premises", 3000, 1),
+    (3, "30010041", "Registration of Dry Cleaning & Laundry Houses", "per annum", 10000, 0),
+    (3, "30010042", "Market Regulation", "per annum", 8000, 0),
+    (3, "30010047", "Pest Control", "per treatment", 5000, 0),
+    (3, "30010053", "Foodstuff Regulation", "per annum", 5000, 0),
+    (3, "30010039", "Movement and Keeping of Dogs", "per annum", 2000, 0),
+    (3, "30010046", "Public Toilet (Public Convenience)", "per facility p.a.", 5000, 0),
+    (3, "30010033", "Environmental Sanitation & Premises Inspection", "per annum", 5000, 1),
+    (3, "30010035", "Stacking of Building Materials / Construction Permit", "per application", 15000, 0),
+    (3, "30010054", "Regulated Premises", "per annum", 20000, 1),
+    (3, "30010050", "Private Sector Participation Refuse Operation (PSPRO)", "per annum", 10000, 0),
+    # -- Registration and Professional Fees --
+    (4, "30010031", "Registration of Marriages, Births and Deaths", "per certificate", 2000, 0),
+    (4, "30010055", "Registration Fee (General)", "per registration", 10000, 0),
+    (4, "30010057", "Agreement Fees — Sale of Land and Other Disposition", "per transaction", 20000, 0),
+    (4, "30010058", "Fees for Certificate of Occupancy", "per application", 50000, 0),
+    (4, "30010059", "Fees for Change of Ownership", "per application", 15000, 0),
+    (4, "30010060", "Searches", "per search", 5000, 0),
+    (4, "30010061", "Tender Fees", "per tender", 12000, 0),
+    (4, "30010048-A", "Contractors Registration — Category A (Construction)", "per annum", 20000, 0),
+    (4, "30010048-B", "Contractors Registration — Category B (Supply)", "per annum", 20000, 0),
+    (4, "30010048-C", "Contractors Registration — Category C (Services)", "per annum", 24000, 0),
+    (4, "30010048-D", "Contractors Registration — Category D (Consultancy)", "per annum", 120000, 0),
+    # -- Levies --
+    (5, "30010062", "Community and Development Levy", "per annum", 30000, 1),
 ]
 for cat, code, name, unit, rate, scope in ITEMS:
     cur.execute("""INSERT INTO revenue_item (category_id, harmonised_code, item_name,
                      legal_basis, unit_of_charge, in_initial_scope)
                    VALUES (?,?,?,?,?,?)""",
-                (cat, code, name, "Council Bye-Law (illustrative)", unit, scope))
+                (cat, code, name, "Kuje Area Council Bye-Law (illustrative)", unit, scope))
     item_id = cur.lastrowid
     cur.execute("""INSERT INTO rate_schedule (revenue_item_id, rate_amount, rate_basis,
                      approved_by_ref, effective_from)
@@ -184,6 +218,16 @@ for cat, code, name, unit, rate, scope in ITEMS:
                      effective_from) VALUES (?,?, '2026-01-01')""",
                 ((item_id % 4) + 1, item_id))
 
+# Core items billed to almost every payer, per the January 2026 sample demand
+# notices (Community & Development Levy plus a business's licence/permit mix).
+CORE_CODES = {"30010062", "30010043", "30010034", "30010044", "30010051", "30010054"}
+core_item_ids = [r[0] for r in cur.execute(
+    "SELECT revenue_item_id FROM revenue_item WHERE harmonised_code IN ({})".format(
+        ",".join("?" * len(CORE_CODES))), tuple(CORE_CODES)).fetchall()]
+other_in_scope_ids = [r[0] for r in cur.execute(
+    "SELECT revenue_item_id FROM revenue_item WHERE in_initial_scope = 1 AND harmonised_code NOT IN ({})".format(
+        ",".join("?" * len(CORE_CODES))), tuple(CORE_CODES)).fetchall()]
+
 # --- Payers -----------------------------------------------------------------
 BIZ = ["Ventures", "Enterprises", "Nigeria Ltd", "Global Services", "Stores",
        "Trading Co", "Motors", "Pharmacy", "Supermarket", "Hotel & Suites",
@@ -191,49 +235,55 @@ BIZ = ["Ventures", "Enterprises", "Nigeria Ltd", "Global Services", "Stores",
 PRE = ["Zenith", "Alpha", "Crown", "Unity", "Royal", "Golden", "Nasara", "Emerald",
        "Peak", "Sunrise", "Silverline", "Chidera", "Al-Amin", "Greenfield", "Excel",
        "Havilah", "Blue Ridge", "Danfodio", "Obudu", "Kaduna"]
+STREETS = ["General Hospital Rd", "Market Square", "New Garage Rd", "Kuje-Gwagwalada Rd",
+           "Sauka Extension", "Airport Rd", "Central Area Rd", "Along Kuje Rd"]
+
+# Payer IDs follow the "C-XXXXXXX" format seen on real KAC demand notices.
+payer_id_pool = random.sample(range(2500000, 3999999), 180)
 
 payer_ids = []
 for i in range(1, 181):
     is_biz = i % 5 != 0
     name = (f"{random.choice(PRE)} {random.choice(BIZ)}" if is_biz
             else f"{random.choice(AGENT_NAMES).split()[0]} {random.choice(['Abubakar','Okafor','Adamu','Nwachukwu','Lawal'])}")
+    # A small number of large payers (bank branches, hotels) mirror the bigger
+    # bills seen in the real sample notices; most are small/medium businesses.
+    scale = random.choices([1, 3, 12], weights=[80, 15, 5])[0]
     cur.execute("""INSERT INTO payer (council_id, payer_ref, payer_type, full_name, phone,
                      email, tin, ward_id, address, geo_lat, geo_lng, kyc_status, created_by)
                    VALUES (1,?,?,?,?,?,?,?,?,?,?,?,1)""",
-                (f"AMAC-2026-{i:06d}", "BUSINESS" if is_biz else "INDIVIDUAL", name,
+                (f"C-{payer_id_pool[i-1]}", "BUSINESS" if is_biz else "INDIVIDUAL", name,
                  f"080{random.randint(10000000, 99999999)}",
                  f"contact{i}@example.ng", f"N-{random.randint(10**7, 10**8-1)}",
-                 ((i - 1) % 12) + 1, f"{random.randint(1,250)} {random.choice(WARDS)[1]} Road, Abuja",
-                 round(8.98 + random.random() * 0.35, 6),
-                 round(7.30 + random.random() * 0.35, 6),
+                 ((i - 1) % 9) + 1,
+                 f"{random.randint(1,60)} {random.choice(STREETS)}",
+                 round(8.75 + random.random() * 0.30, 6),
+                 round(7.15 + random.random() * 0.30, 6),
                  random.choice(["VERIFIED", "VERIFIED", "PENDING"])))
     pid = cur.lastrowid
-    payer_ids.append(pid)
+    payer_ids.append((pid, scale))
     if is_biz:
         cur.execute("""INSERT INTO enumerated_asset (payer_id, asset_ref, asset_type,
                          description, ward_id, geo_lat, geo_lng, enumerated_by)
                        VALUES (?,?,?,?,?,?,?,?)""",
                     (pid, f"AST-{i:06d}", random.choice(["PREMISES", "SHOP", "KIOSK", "SIGNAGE"]),
-                     "Enumerated during field exercise", ((i - 1) % 12) + 1,
-                     round(8.98 + random.random() * 0.35, 6),
-                     round(7.30 + random.random() * 0.35, 6),
+                     "Enumerated during field exercise", ((i - 1) % 9) + 1,
+                     round(8.75 + random.random() * 0.30, 6),
+                     round(7.15 + random.random() * 0.30, 6),
                      random.choice(agent_ids)))
 
 # --- Bills, assessments, payments, receipts --------------------------------
-in_scope = [r[0] for r in cur.execute(
-    "SELECT revenue_item_id FROM revenue_item WHERE in_initial_scope = 1").fetchall()]
-
 bill_no = 0
 payment_no = 0
 today = datetime.now()
 
-for pid in payer_ids:
+for pid, scale in payer_ids:
     for _ in range(random.randint(1, 3)):
         bill_no += 1
         issued = today - timedelta(days=random.randint(0, 120))
         due = issued + timedelta(days=30)
         consultant = random.randint(1, 4)
-        bill_ref = f"AMAC/2026/{bill_no:06d}"
+        bill_ref = f"KAC/2026/{bill_no:06d}"
         cur.execute("""INSERT INTO bill (bill_ref, payer_id, consultant_id, total_amount,
                          due_date, status, issued_by, issued_at)
                        VALUES (?,?,?,0,?, 'ISSUED', 1, ?)""",
@@ -241,12 +291,19 @@ for pid in payer_ids:
                      issued.strftime("%Y-%m-%d %H:%M:%S")))
         bid = cur.lastrowid
         total = 0.0
-        for item_id in random.sample(in_scope, random.randint(1, 3)):
+        # Every bill carries the Community & Development Levy plus 2-4 of the
+        # other core licence/permit items, mirroring the real demand notices.
+        line_items = [random.choice(core_item_ids)]
+        line_items += random.sample(core_item_ids, k=min(len(core_item_ids) - 1,
+                                                          random.randint(2, 4)))
+        if other_in_scope_ids and random.random() < 0.3:
+            line_items.append(random.choice(other_in_scope_ids))
+        for item_id in dict.fromkeys(line_items):
             rate = cur.execute(
                 "SELECT rate_id, rate_amount FROM rate_schedule WHERE revenue_item_id=?",
                 (item_id,)).fetchone()
-            qty = random.choice([1, 1, 1, 2, 3])
-            amt = rate[1] * qty
+            qty = scale * random.choice([1, 1, 1, 2])
+            amt = round(rate[1] * qty, 2)
             cur.execute("""INSERT INTO assessment (payer_id, revenue_item_id, rate_id,
                              consultant_id, period_year, quantity, assessed_amount,
                              status, created_by, created_at)

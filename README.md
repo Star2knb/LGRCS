@@ -1,13 +1,18 @@
 # RevAc — Revenue Administration & Collection
 
-A unified revenue platform for the Abuja Municipal Area Council (AMAC), built by
-Alliance Consulting & Digital Solutions Ltd (ACDSL). Covers enumeration through
-to enforcement: payer registry, harmonised chart of revenue, assessment &
+A unified revenue platform for Kuje Area Council (KAC), FCT, built by Alliance
+Consulting & Digital Solutions Ltd (ACDSL). Covers enumeration through to
+enforcement: payer registry, harmonised chart of revenue, assessment &
 e-billing, multi-channel e-payments (POS, over-the-counter teller, internet &
-mobile banking, USSD, FirstMonie agent banking), e-receipting with QR
-verification, bank reconciliation, sub-consultant commission settlement, and
-debt/enforcement tracking — with per-portfolio data segregation across
-sub-consultants.
+mobile banking, USSD, FirstMonie agent banking), printable Harmonised Demand
+Notices, e-receipting with QR verification, bank reconciliation, sub-consultant
+commission settlement, and debt/enforcement tracking — with per-portfolio data
+segregation across sub-consultants.
+
+The harmonised chart of revenue (items and codes), the Gazette-derived rates,
+and the Harmonised Demand Notice print format are drawn from Kuje Area
+Council's actual revenue code list, Gazette, and January 2026 sample demand
+notices — see [Note on data](#note-on-data) below.
 
 ## Structure
 
@@ -18,8 +23,11 @@ sub-consultants.
   settlements, debt management, audit log).
 - **[mobile/](mobile/)** — offline-capable PWA for field collection agents
   (worklist, cash collection, payer enumeration, background sync).
-- **[docs/](docs/)** — [architecture](docs/ARCHITECTURE.md) and
-  [API reference](docs/API_REFERENCE.md).
+- **[docs/](docs/)** — [architecture](docs/ARCHITECTURE.md),
+  [API reference](docs/API_REFERENCE.md), and the source
+  [reference documents](docs/reference/) (Gazette, revenue code list, demand
+  notice template and a real sample) the harmonised chart and print format
+  were built from.
 
 ## Running it locally
 
@@ -60,7 +68,13 @@ place to store real production data as-is.
 
 ## Note on data
 
-Revenue items, rates, wards, sub-consultants and all transactions in the seed
-data are **illustrative demonstration data**, pending the Harmonisation
-Workstream (Component 3), the enumeration exercise, and the Council's approved
-rates schedule.
+The harmonised chart of revenue (item names and codes) is taken from the Kuje
+Area Council Revenue Item/Revenue Code list; rates come from the KAC Gazette
+where it gives a clean, single figure (e.g. tenement rate by property type,
+contractor registration by category) and are otherwise a single illustrative
+flat rate per item, since the Gazette's more granular tiers (e.g. liquor
+licensing by premises size) aren't broken out on the demand notices Council
+actually issues. Payers, wards' demo assignments, sub-consultants and all
+transactions are **illustrative demonstration data** — not real ratepayer
+records — pending the Harmonisation Workstream, the enumeration exercise, and
+the Council's confirmed current rates schedule.

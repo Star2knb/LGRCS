@@ -74,6 +74,16 @@ POST /api/bills
 Assessment and billing happen in one transaction: each line creates an `assessment` row priced
 from the current `rate_schedule`, then a `bill_line` linking it to the bill.
 
+`GET /api/bills/{bill_ref}` (note the `bill_ref` itself contains slashes, e.g.
+`KAC/2026/000123` — the route uses Flask's `path` converter so it matches
+literally) returns the payer's name, ref, phone, address and ward alongside
+the bill and its lines, plus a `prior_arrears` figure (the payer's other
+outstanding bill balances). This is what powers
+[`frontend/demand-notice.html`](../frontend/demand-notice.html), a standalone
+printable page reachable at `/frontend/demand-notice.html?bill={bill_ref}`
+that renders the bill as a Harmonised Demand Notice matching KAC's real
+distributed format (see [reference documents](reference/)).
+
 ---
 
 ## Payments & receipting
@@ -127,7 +137,7 @@ Header: X-RevAc-Signature: <HMAC-SHA256 hex of the raw body>
 ```bash
 curl -X POST http://127.0.0.1:8000/api/channels/POS/webhook \
   -H 'Content-Type: application/json' \
-  -d '{"terminalId":"20481123","rrn":"RRN12345","amount":25000,"billRef":"AMAC/2026/000001"}'
+  -d '{"terminalId":"20481123","rrn":"RRN12345","amount":25000,"billRef":"KAC/2026/000001"}'
 ```
 
 ### Teller settlement file
@@ -144,7 +154,7 @@ already-received references are skipped, not re-posted.
 
 ```
 POST /api/channels/USSD/session
-{ "text": "1*AMAC/2026/000001*5000", "msisdn": "08031234567" }
+{ "text": "1*KAC/2026/000001*5000", "msisdn": "08031234567" }
 ```
 
 Replies `CON …` to continue the session or `END …` to close it. Menu: 1 pay a bill,

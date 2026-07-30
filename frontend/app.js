@@ -292,7 +292,7 @@ async function openPayerDetail(id) {
     <h3 style="margin:18px 0 8px">Assets (${p.assets.length})</h3>
     ${p.assets.map(a => `<div class="kv"><span>${esc(a.asset_ref)} · ${esc(a.asset_type)}</span><b>${esc(a.description || '')}</b></div>`).join('') || '<div class="empty">No enumerated assets</div>'}
     <h3 style="margin:18px 0 8px">Bills (${p.bills.length})</h3>
-    ${p.bills.map(b => `<div class="kv"><span>${esc(b.bill_ref)} · due ${d10(b.due_date)}</span><b class="num">${money(b.balance)} of ${money(b.total_amount)}</b></div>`).join('') || '<div class="empty">No bills</div>'}
+    ${p.bills.map(b => `<div class="kv"><span>${esc(b.bill_ref)} · due ${d10(b.due_date)}</span><b class="num">${money(b.balance)} of ${money(b.total_amount)} <a href="javascript:void(0)" onclick="openDemandNotice('${esc(b.bill_ref)}')" style="margin-left:8px;font-weight:400">notice</a></b></div>`).join('') || '<div class="empty">No bills</div>'}
   `;
   $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
 }
@@ -349,11 +349,16 @@ async function renderBills(status) {
   try { rows = await api('/api/bills?' + qs({ status })); } catch (e) { $('#billTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   const tagOf = s => s === 'PAID' ? 'ok' : s === 'OVERDUE' ? 'bad' : s === 'PART_PAID' ? 'warn' : s === 'CANCELLED' ? 'neutral' : 'brass';
   $('#billTable').innerHTML = `
-    <table><thead><tr><th>Bill Ref</th><th>Payer</th><th>Consultant</th><th class="r">Total</th><th class="r">Balance</th><th>Due</th><th>Status</th></tr></thead>
+    <table><thead><tr><th>Bill Ref</th><th>Payer</th><th>Consultant</th><th class="r">Total</th><th class="r">Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(b => `
       <tr><td class="num">${esc(b.bill_ref)}</td><td>${esc(b.full_name)}</td><td>${esc(b.consultant_name || '—')}</td>
         <td class="r num">${money(b.total_amount)}</td><td class="r num">${money(b.balance)}</td>
-        <td class="num">${d10(b.due_date)}</td><td><span class="tag ${tagOf(b.status)}">${esc(b.status.replace('_', ' '))}</span></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No bills match</td></tr>'}</tbody></table>`;
+        <td class="num">${d10(b.due_date)}</td><td><span class="tag ${tagOf(b.status)}">${esc(b.status.replace('_', ' '))}</span></td>
+        <td><button class="btn-ghost btn-sm" onclick="openDemandNotice('${esc(b.bill_ref)}')">Demand Notice</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">No bills match</td></tr>'}</tbody></table>`;
+}
+
+function openDemandNotice(billRef) {
+  window.open('/frontend/demand-notice.html?bill=' + encodeURIComponent(billRef), '_blank');
 }
 
 let billLines = [];

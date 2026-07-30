@@ -1,8 +1,7 @@
 -- ===========================================================================
 -- RevAc Application Suite — SQLite schema (runtime edition)
--- Derived from RevAc_AMAC_Database_Schema.sql (PostgreSQL reference DDL)
 -- Alliance Consulting & Digital Solutions Ltd (ACDSL)
--- Deployment: Abuja Municipal Area Council (AMAC), FCT
+-- Deployment: Kuje Area Council (KAC), FCT
 -- ===========================================================================
 
 PRAGMA foreign_keys = ON;
