@@ -174,6 +174,27 @@ function openModal(title, body, foot) {
 }
 function closeModal() { $('#modalBg').classList.remove('on'); }
 
+/* ---------------- document viewer (Demand Notice / Demand Bill) ---------------- */
+function openDoc(title, url) {
+  $('#docViewerTitle').textContent = title;
+  $('#docViewerFrame').src = url;
+  $('#docViewerBg').classList.add('on');
+}
+function closeDocViewer() {
+  $('#docViewerBg').classList.remove('on');
+  $('#docViewerFrame').src = 'about:blank';
+}
+function printDocViewer() {
+  const win = $('#docViewerFrame').contentWindow;
+  if (win) win.print();
+}
+function openDemandNotice(billRef) {
+  openDoc('Harmonised Demand Notice', '/frontend/demand-notice.html?bill=' + encodeURIComponent(billRef));
+}
+function openDemandBill(billRef) {
+  openDoc('Harmonised Demand Bill', '/frontend/demand-bill.html?bill=' + encodeURIComponent(billRef));
+}
+
 /* ---------------- dashboard ---------------- */
 const CHANNEL_COLORS = { POS: '#13543F', OTC: '#C08B2C', IB_MB: '#1C6B51', USSD: '#9A6B00', FIRSTMONIE: '#52635C' };
 
@@ -292,7 +313,9 @@ async function openPayerDetail(id) {
     <h3 style="margin:18px 0 8px">Assets (${p.assets.length})</h3>
     ${p.assets.map(a => `<div class="kv"><span>${esc(a.asset_ref)} · ${esc(a.asset_type)}</span><b>${esc(a.description || '')}</b></div>`).join('') || '<div class="empty">No enumerated assets</div>'}
     <h3 style="margin:18px 0 8px">Bills (${p.bills.length})</h3>
-    ${p.bills.map(b => `<div class="kv"><span>${esc(b.bill_ref)} · due ${d10(b.due_date)}</span><b class="num">${money(b.balance)} of ${money(b.total_amount)} <a href="javascript:void(0)" onclick="openDemandNotice('${esc(b.bill_ref)}')" style="margin-left:8px;font-weight:400">notice</a></b></div>`).join('') || '<div class="empty">No bills</div>'}
+    ${p.bills.map(b => `<div class="kv"><span>${esc(b.bill_ref)} · due ${d10(b.due_date)}</span><b class="num">${money(b.balance)} of ${money(b.total_amount)}
+      <a href="javascript:void(0)" onclick="openDemandNotice('${esc(b.bill_ref)}')" style="margin-left:8px;font-weight:400">notice</a>
+      <a href="javascript:void(0)" onclick="openDemandBill('${esc(b.bill_ref)}')" style="margin-left:6px;font-weight:400">bill</a></b></div>`).join('') || '<div class="empty">No bills</div>'}
   `;
   $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
 }
@@ -354,11 +377,10 @@ async function renderBills(status) {
       <tr><td class="num">${esc(b.bill_ref)}</td><td>${esc(b.full_name)}</td><td>${esc(b.consultant_name || '—')}</td>
         <td class="r num">${money(b.total_amount)}</td><td class="r num">${money(b.balance)}</td>
         <td class="num">${d10(b.due_date)}</td><td><span class="tag ${tagOf(b.status)}">${esc(b.status.replace('_', ' '))}</span></td>
-        <td><button class="btn-ghost btn-sm" onclick="openDemandNotice('${esc(b.bill_ref)}')">Demand Notice</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">No bills match</td></tr>'}</tbody></table>`;
-}
-
-function openDemandNotice(billRef) {
-  window.open('/frontend/demand-notice.html?bill=' + encodeURIComponent(billRef), '_blank');
+        <td style="white-space:nowrap">
+          <button class="btn-ghost btn-sm" onclick="openDemandNotice('${esc(b.bill_ref)}')">Notice</button>
+          <button class="btn-ghost btn-sm" onclick="openDemandBill('${esc(b.bill_ref)}')">Bill</button>
+        </td></tr>`).join('') || '<tr><td colspan="8" class="empty">No bills match</td></tr>'}</tbody></table>`;
 }
 
 let billLines = [];

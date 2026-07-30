@@ -98,6 +98,17 @@
   </div>
 </div>
 
+<div class="doc-bg" id="docViewerBg" onclick="if(event.target===this)closeDocViewer()">
+  <div class="doc-viewer">
+    <div class="doc-viewer-head">
+      <h3 id="docViewerTitle">Document</h3>
+      <button class="btn-ghost btn-sm" onclick="printDocViewer()">Print</button>
+      <button class="btn-ghost btn-sm" onclick="closeDocViewer()">Close</button>
+    </div>
+    <iframe id="docViewerFrame"></iframe>
+  </div>
+</div>
+
 <div id="toast"></div>
 <script src="/frontend/app.js"></script>
 </body>

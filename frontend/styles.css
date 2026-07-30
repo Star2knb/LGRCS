@@ -247,6 +247,24 @@ input:focus, select:focus, textarea:focus {
 .modal-body { padding: 22px; }
 .modal-foot { padding: 14px 22px; border-top: 1px solid var(--line); display: flex; gap: 10px; justify-content: flex-end; }
 
+/* Document viewer (Demand Notice / Demand Bill) */
+.doc-bg {
+  position: fixed; inset: 0; background: rgba(6,40,29,.5); display: none;
+  align-items: center; justify-content: center; z-index: 100; padding: 24px;
+}
+.doc-bg.on { display: flex; }
+.doc-viewer {
+  background: var(--surface); border-radius: 12px; width: 100%; max-width: 900px;
+  height: 92vh; display: flex; flex-direction: column; box-shadow: 0 24px 64px rgba(6,40,29,.32);
+  overflow: hidden;
+}
+.doc-viewer-head {
+  padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px;
+}
+.doc-viewer-head h3 { font-size: 15px; font-weight: 600; flex: 1; }
+#docViewerFrame { flex: 1; width: 100%; border: none; background: #E7EBE9; }
+@media (max-width: 640px) { .doc-viewer { max-width: 100%; height: 100%; border-radius: 0; } }
+
 /* Toast */
 #toast {
   position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex;
