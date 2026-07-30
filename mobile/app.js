@@ -243,6 +243,35 @@ function qrSvg(token) {
 }
 
 /* ---------------- enumeration ---------------- */
+S.enumType = 'BUSINESS';
+S.revenueItems = null;
+
+function setEnumType(type) {
+  S.enumType = type;
+  const isIndividual = type === 'INDIVIDUAL';
+  $('#n_type_individual').style.background = isIndividual ? 'var(--green-600)' : 'var(--line)';
+  $('#n_type_individual').style.color = isIndividual ? '#fff' : 'var(--ink)';
+  $('#n_type_business').style.background = isIndividual ? 'var(--line)' : 'var(--green-600)';
+  $('#n_type_business').style.color = isIndividual ? 'var(--ink)' : '#fff';
+  $('#n_name_label').textContent = isIndividual ? 'Full Name' : 'Business Name';
+  $('#n_name').placeholder = isIndividual ? 'Enter full name' : 'Enter business name';
+  $('#n_idnum_label').textContent = isIndividual ? 'NIN / BVN' : 'TIN';
+  $('#n_idnum').placeholder = isIndividual ? 'National Identity / Bank Verification Number' : 'Tax Identification Number';
+}
+
+async function openEnum() {
+  go('enum');
+  setEnumType(S.enumType);
+  if (!S.revenueItems) {
+    try { S.revenueItems = await api('/api/revenue-items'); } catch { S.revenueItems = []; }
+  }
+  $('#n_items').innerHTML = S.revenueItems.filter(i => i.current_rate != null).map(i => `
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-bottom:6px">
+      <input type="checkbox" class="n-item" value="${i.revenue_item_id}" style="width:auto">
+      ${esc(i.harmonised_code)} — ${esc(i.item_name)} (${money(i.current_rate)})
+    </label>`).join('') || '<div class="empty">No revenue items available</div>';
+}
+
 function grabGps() {
   if (!navigator.geolocation) return toast('This device has no GPS', true);
   navigator.geolocation.getCurrentPosition(
@@ -257,10 +286,14 @@ function grabGps() {
 }
 
 async function registerPayer() {
+  const isIndividual = S.enumType === 'INDIVIDUAL';
+  const idnum = $('#n_idnum').value.trim();
+  const revenue_item_ids = [...document.querySelectorAll('.n-item:checked')].map(el => Number(el.value));
   const body = {
-    full_name: $('#n_name').value, payer_type: $('#n_type').value, phone: $('#n_phone').value,
+    full_name: $('#n_name').value, payer_type: S.enumType, phone: $('#n_phone').value,
     address: $('#n_addr').value, ward_id: S.agent.assigned_ward_id,
-    geo_lat: S.geo?.lat, geo_lng: S.geo?.lng, force: true
+    geo_lat: S.geo?.lat, geo_lng: S.geo?.lng, force: true, revenue_item_ids,
+    ...(isIndividual ? { nin_bvn: idnum } : { tin: idnum }),
   };
   if (!body.full_name) return toast('Enter the payer name', true);
 
@@ -273,8 +306,9 @@ async function registerPayer() {
   }
   try {
     const r = await api('/api/payers', { method: 'POST', body: JSON.stringify(body) });
-    $('#enumOut').innerHTML = `<div class="tag ok">Registered · ${esc(r.payer_ref)}</div>`;
-    ['n_name', 'n_phone', 'n_addr'].forEach(i => $('#' + i).value = '');
+    $('#enumOut').innerHTML = `<div class="tag ok">Registered · ${esc(r.payer_ref)}${r.draft_assessments_created ? ` · ${r.draft_assessments_created} item(s) enumerated` : ''}</div>`;
+    ['n_name', 'n_idnum', 'n_phone', 'n_addr'].forEach(i => $('#' + i).value = '');
+    document.querySelectorAll('.n-item:checked').forEach(el => el.checked = false);
     toast('Payer registered');
     boot();
   } catch (e) { toast(e.message, true); }

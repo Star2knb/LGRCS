@@ -86,7 +86,7 @@ const NAV_SECTIONS = {
     { label: 'Overview', items: ['dashboard', 'global'] },
     { label: 'Revenue Operations', items: ['payers', 'bills', 'payments', 'receipts'] },
     { label: 'Finance', items: ['reconciliation', 'settlements', 'debt'] },
-    { label: 'Administration', items: ['consultants', 'agents', 'terminals', 'audit'] },
+    { label: 'Administration', items: ['revenueItems', 'consultants', 'agents', 'terminals', 'audit'] },
   ],
   CONSULTANT: [
     { label: 'Overview', items: ['dashboard'] },
@@ -110,6 +110,7 @@ const PAGE_META = {
   reconciliation: ['Reconciliation', 'Platform collections matched against the bank feed'],
   settlements:    ['Commission Settlements', 'Sub-consultant commission computation and status'],
   debt:           ['Debt Management', 'Overdue bills and the enforcement ladder'],
+  revenueItems:   ['Revenue Items', 'The harmonised chart of revenue and its rates'],
   consultants:    ['Sub-Consultants', 'Portfolio holders onboarded to the platform'],
   agents:         ['Field Agents', 'Collection agents deployed to wards'],
   terminals:      ['POS Terminal Fleet', 'Deployed terminals and lifetime collections'],
@@ -157,8 +158,8 @@ function loadPage(page) {
   const renderers = {
     dashboard: renderDashboard, global: renderGlobal, payers: renderPayers, bills: renderBills,
     payments: renderPayments, receipts: renderReceipts, reconciliation: renderReconciliation,
-    settlements: renderSettlements, debt: renderDebt, consultants: renderConsultants,
-    agents: renderAgents, terminals: renderTerminals, audit: renderAudit,
+    settlements: renderSettlements, debt: renderDebt, revenueItems: renderRevenueItems,
+    consultants: renderConsultants, agents: renderAgents, terminals: renderTerminals, audit: renderAudit,
   };
   (renderers[page || state.page] || renderDashboard)();
 }
@@ -282,7 +283,8 @@ async function renderPayers(q) {
     <div class="toolbar">
       <input class="grow" id="payerSearch" placeholder="Search by name, payer ref or phone…" value="${esc(q || '')}">
       <button class="btn-ghost" onclick="renderPayers($('#payerSearch').value)">Search</button>
-      <button class="btn-primary" onclick="openPayerForm()">Register Payer</button>
+      <button class="btn-ghost" onclick="openPayerForm('INDIVIDUAL')">Register Individual</button>
+      <button class="btn-primary" onclick="openPayerForm('BUSINESS')">Register Business</button>
     </div>
     <div class="card"><div class="table-wrap" id="payerTable"><div class="empty">Loading…</div></div></div>
   `);
@@ -301,8 +303,10 @@ async function renderPayers(q) {
 
 async function openPayerDetail(id) {
   openModal('Payer', '<div class="empty">Loading…</div>');
-  let p;
-  try { p = await api('/api/payers/' + id); } catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  let p, drafts;
+  try {
+    [p, drafts] = await Promise.all([api('/api/payers/' + id), api(`/api/payers/${id}/draft-assessments`)]);
+  } catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   $('#modalTitle').textContent = p.full_name;
   $('#modalBody').innerHTML = `
     <div class="kv"><span>Payer ref</span><b class="num">${esc(p.payer_ref)}</b></div>
@@ -312,6 +316,12 @@ async function openPayerDetail(id) {
     <div class="kv"><span>KYC status</span><b>${esc(p.kyc_status)}</b></div>
     <h3 style="margin:18px 0 8px">Assets (${p.assets.length})</h3>
     ${p.assets.map(a => `<div class="kv"><span>${esc(a.asset_ref)} · ${esc(a.asset_type)}</span><b>${esc(a.description || '')}</b></div>`).join('') || '<div class="empty">No enumerated assets</div>'}
+    <h3 style="margin:18px 0 8px">Enumerated Revenue Items — not yet billed (${drafts.length})</h3>
+    ${drafts.length ? `
+      ${drafts.map(a => `<div class="kv"><span>${esc(a.harmonised_code)} — ${esc(a.item_name)}</span><b class="num">${money(a.assessed_amount)}</b></div>`).join('')}
+      <div class="kv"><span><b>Total if billed now</b></span><b class="num">${money(drafts.reduce((s, a) => s + a.assessed_amount, 0))}</b></div>
+      <button class="btn-brass btn-sm" style="margin-top:8px" onclick="issueHarmonizedBill(${p.payer_id})">Issue Harmonized Bill</button>
+    ` : '<div class="empty">Nothing pending — enumerate revenue items for this payer to build one up</div>'}
     <h3 style="margin:18px 0 8px">Bills (${p.bills.length})</h3>
     ${p.bills.map(b => `<div class="kv"><span>${esc(b.bill_ref)} · due ${d10(b.due_date)}</span><b class="num">${money(b.balance)} of ${money(b.total_amount)}
       <a href="javascript:void(0)" onclick="openDemandNotice('${esc(b.bill_ref)}')" style="margin-left:8px;font-weight:400">notice</a>
@@ -320,33 +330,59 @@ async function openPayerDetail(id) {
   $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
 }
 
-async function openPayerForm() {
-  let wards = [];
-  try { wards = await api('/api/wards'); } catch {}
-  openModal('Register Payer', `
-    <div class="row"><div class="field"><label>Full name</label><input id="pf_name"></div>
-      <div class="field"><label>Type</label><select id="pf_type"><option value="BUSINESS">Business</option><option value="INDIVIDUAL">Individual</option><option value="GOVERNMENT">Government</option><option value="NGO">NGO</option></select></div></div>
-    <div class="row"><div class="field"><label>Phone</label><input id="pf_phone"></div>
-      <div class="field"><label>Email</label><input id="pf_email"></div></div>
-    <div class="row"><div class="field"><label>TIN</label><input id="pf_tin"></div>
-      <div class="field"><label>Ward</label><select id="pf_ward"><option value="">—</option>${wards.map(w => `<option value="${w.ward_id}">${esc(w.ward_name)}</option>`).join('')}</select></div></div>
-    <div class="field"><label>Address</label><textarea id="pf_addr" rows="2"></textarea></div>
+async function issueHarmonizedBill(payerId) {
+  try {
+    const r = await api('/api/bills', { method: 'POST', body: JSON.stringify({ payer_id: payerId, bill_all_drafts: true }) });
+    toast(`Harmonized bill issued — ${r.bill_ref} (${money(r.total_amount)})`);
+    openPayerDetail(payerId);
+    if (state.page === 'bills') renderBills();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function openPayerForm(payerType) {
+  let wards = [], items = [];
+  try { [wards, items] = await Promise.all([api('/api/wards'), api('/api/revenue-items')]); } catch {}
+  const isIndividual = payerType === 'INDIVIDUAL';
+  const itemChecks = items.filter(i => i.current_rate != null).map(i => `
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-bottom:6px">
+      <input type="checkbox" class="pf-item" value="${i.revenue_item_id}" style="width:auto">
+      ${esc(i.harmonised_code)} — ${esc(i.item_name)} (${money(i.current_rate)})
+    </label>`).join('');
+
+  openModal(isIndividual ? 'Register Individual' : 'Register Business', `
+    <input type="hidden" id="pf_type" value="${payerType}">
+    <div class="row"><div class="field"><label>${isIndividual ? 'Full name' : 'Business name'}</label><input id="pf_name"></div>
+      <div class="field"><label>Phone</label><input id="pf_phone"></div></div>
+    <div class="row">
+      <div class="field"><label>${isIndividual ? 'NIN / BVN' : 'TIN'}</label><input id="pf_idnum" placeholder="${isIndividual ? 'National Identity / Bank Verification Number' : 'Tax Identification Number'}"></div>
+      <div class="field"><label>Email</label><input id="pf_email"></div>
+    </div>
+    <div class="row"><div class="field"><label>Ward</label><select id="pf_ward"><option value="">—</option>${wards.map(w => `<option value="${w.ward_id}">${esc(w.ward_name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Address</label><input id="pf_addr"></div></div>
+    <div class="field"><label>Revenue items liable (optional — enumerate what applies now)</label>
+      <div style="max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:10px">${itemChecks}</div>
+    </div>
     <div id="pf_err"></div>
   `, `<button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="submitPayerForm()">Register</button>`);
 }
 
 async function submitPayerForm(force) {
+  const payerType = $('#pf_type').value;
+  const isIndividual = payerType === 'INDIVIDUAL';
+  const idnum = $('#pf_idnum').value.trim();
+  const revenue_item_ids = [...document.querySelectorAll('.pf-item:checked')].map(el => Number(el.value));
   const body = {
-    full_name: $('#pf_name').value.trim(), payer_type: $('#pf_type').value,
+    full_name: $('#pf_name').value.trim(), payer_type: payerType,
     phone: $('#pf_phone').value.trim(), email: $('#pf_email').value.trim(),
-    tin: $('#pf_tin').value.trim(), ward_id: $('#pf_ward').value || null,
-    address: $('#pf_addr').value.trim(), force: !!force,
+    ward_id: $('#pf_ward').value || null, address: $('#pf_addr').value.trim(),
+    revenue_item_ids, force: !!force,
+    ...(isIndividual ? { nin_bvn: idnum } : { tin: idnum }),
   };
   if (!body.full_name) { $('#pf_err').innerHTML = '<div class="notice bad">Enter the payer\'s name</div>'; return; }
   try {
     const r = await api('/api/payers', { method: 'POST', body: JSON.stringify(body) });
     closeModal();
-    toast(`Payer registered — ${r.payer_ref}`);
+    toast(`${isIndividual ? 'Individual' : 'Business'} registered — ${r.payer_ref}${r.draft_assessments_created ? ` (${r.draft_assessments_created} item(s) enumerated)` : ''}`);
     renderPayers();
   } catch (e) {
     $('#pf_err').innerHTML = `<div class="notice bad">${esc(e.message)}
@@ -592,22 +628,63 @@ async function escalateDebt(id) {
   } catch (e) { toast(e.message, true); }
 }
 
+/* ---------------- revenue items ---------------- */
+async function renderRevenueItems() {
+  setPage('<div class="card"><div class="table-wrap" id="riTable"><div class="empty">Loading…</div></div></div>');
+  let rows;
+  try { rows = await api('/api/revenue-items'); } catch (e) { $('#riTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  $('#riTable').innerHTML = `
+    <table><thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Unit</th><th class="r">Current Rate</th><th>In Scope</th><th></th></tr></thead>
+    <tbody>${rows.map(i => `
+      <tr><td class="num">${esc(i.harmonised_code)}</td><td>${esc(i.item_name)}</td><td>${esc(i.category_name)}</td>
+        <td>${esc(i.unit_of_charge || '—')}</td><td class="r num">${i.current_rate != null ? money(i.current_rate) : '—'}</td>
+        <td><span class="tag ${i.in_initial_scope ? 'ok' : 'neutral'}">${i.in_initial_scope ? 'Yes' : 'No'}</span></td>
+        <td><button class="btn-ghost btn-sm" onclick="openRateForm(${i.revenue_item_id}, '${esc(i.item_name)}', ${i.current_rate || 0})">Change Rate</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No revenue items</td></tr>'}</tbody></table>`;
+}
+
+function openRateForm(itemId, itemName, currentRate) {
+  openModal(`Change Rate — ${itemName}`, `
+    <div class="field"><label>New rate amount</label><input id="rf_amount" type="number" value="${currentRate}" step="1"></div>
+    <div class="field"><label>Approval reference</label><input id="rf_ref" placeholder="e.g. Council resolution ref"></div>
+    <div class="card-note">The current rate closes out today and this becomes effective immediately. History is kept, not overwritten.</div>
+    <div id="rf_err"></div>
+  `, `<button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="submitRateForm(${itemId})">Save Rate</button>`);
+}
+
+async function submitRateForm(itemId) {
+  const amount = Number($('#rf_amount').value);
+  if (!amount || amount <= 0) { $('#rf_err').innerHTML = '<div class="notice bad">Enter a valid rate amount</div>'; return; }
+  try {
+    await api(`/api/revenue-items/${itemId}/rate`, {
+      method: 'POST',
+      body: JSON.stringify({ rate_amount: amount, approved_by_ref: $('#rf_ref').value.trim() || undefined }),
+    });
+    closeModal();
+    toast('Rate updated');
+    renderRevenueItems();
+  } catch (e) { $('#rf_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+}
+
 /* ---------------- consultants ---------------- */
 async function renderConsultants() {
   const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
-  setPage(`<div class="card"><div class="table-wrap" id="consTable"><div class="empty">Loading…</div></div></div>`);
+  setPage(`
+    ${isAdmin ? `<div class="toolbar"><div class="grow"></div><button class="btn-primary" onclick="openConsultantForm()">Onboard Consultant</button></div>` : ''}
+    <div class="card"><div class="table-wrap" id="consTable"><div class="empty">Loading…</div></div></div>
+  `);
   let rows;
   try { rows = await api('/api/consultants'); } catch (e) { $('#consTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   $('#consTable').innerHTML = `
-    <table><thead><tr><th>Consultant</th><th>Code</th><th class="r">Commission Rate</th><th class="r">Agents</th><th>Status</th>${isAdmin ? '<th></th>' : ''}</tr></thead>
+    <table><thead><tr><th>Consultant</th><th>Code</th><th class="r">Commission Rate</th><th class="r">Agents</th><th>Status</th><th></th>${isAdmin ? '<th></th>' : ''}</tr></thead>
     <tbody>${rows.map(c => `
       <tr><td>${esc(c.consultant_name)}</td><td class="num">${esc(c.consultant_code)}</td>
         <td class="r num">${c.commission_rate}%</td><td class="r">${c.agents}</td>
         <td><span class="tag ${c.status === 'ACTIVE' ? 'ok' : c.status === 'SUSPENDED' ? 'bad' : 'neutral'}">${esc(c.status)}</span></td>
+        <td><button class="btn-ghost btn-sm" onclick="openConsultantPortfolio(${c.consultant_id}, '${esc(c.consultant_name)}')">Portfolio</button></td>
         ${isAdmin ? `<td>
           <select onchange="changeConsultantStatus(${c.consultant_id}, this.value)" style="width:auto">
             ${['PENDING', 'ACTIVE', 'SUSPENDED', 'EXITED'].map(s => `<option value="${s}" ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}
-          </select></td>` : ''}</tr>`).join('') || `<tr><td colspan="${isAdmin ? 6 : 5}" class="empty">No consultants onboarded</td></tr>`}</tbody></table>`;
+          </select></td>` : ''}</tr>`).join('') || `<tr><td colspan="${isAdmin ? 7 : 6}" class="empty">No consultants onboarded</td></tr>`}</tbody></table>`;
 }
 
 async function changeConsultantStatus(id, status) {
@@ -618,18 +695,142 @@ async function changeConsultantStatus(id, status) {
   } catch (e) { toast(e.message, true); }
 }
 
+function openConsultantForm() {
+  openModal('Onboard Consultant', `
+    <div class="field"><label>Consultant name</label><input id="cf_name"></div>
+    <div class="row">
+      <div class="field"><label>Contract reference</label><input id="cf_ref" placeholder="KAC/RC/2026/xxx"></div>
+      <div class="field" style="max-width:160px"><label>Commission rate (%)</label><input id="cf_rate" type="number" value="30" step="0.5"></div>
+    </div>
+    <div id="cf_err"></div>
+  `, `<button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="submitConsultantForm()">Onboard</button>`);
+}
+
+async function submitConsultantForm() {
+  const name = $('#cf_name').value.trim();
+  if (!name) { $('#cf_err').innerHTML = '<div class="notice bad">Enter the consultant\'s name</div>'; return; }
+  try {
+    const r = await api('/api/consultants', {
+      method: 'POST',
+      body: JSON.stringify({ consultant_name: name, contract_ref: $('#cf_ref').value.trim(), commission_rate: Number($('#cf_rate').value) || 0 }),
+    });
+    closeModal();
+    toast(`Consultant onboarded — ${r.consultant_code}`);
+    renderConsultants();
+  } catch (e) { $('#cf_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+}
+
+async function openConsultantPortfolio(consultantId, consultantName) {
+  const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
+  openModal(`Portfolio — ${consultantName}`, '<div class="empty">Loading…</div>');
+  let portfolio, items;
+  try {
+    [portfolio, items] = await Promise.all([
+      api(`/api/consultants/${consultantId}/portfolio`),
+      isAdmin ? api('/api/revenue-items') : Promise.resolve([]),
+    ]);
+  } catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+
+  const assignedIds = new Set(portfolio.map(p => p.revenue_item_id));
+  const rows = portfolio.map(p => `
+    <div class="kv"><span>${esc(p.harmonised_code)} — ${esc(p.item_name)}${p.ward_name ? ' · ' + esc(p.ward_name) : ''}</span>
+      <b>${isAdmin ? `<a href="javascript:void(0)" onclick="revokeConsultantPortfolio(${consultantId}, ${p.portfolio_id})" style="color:var(--danger);font-weight:400">revoke</a>` : ''}</b></div>
+  `).join('') || '<div class="empty">No revenue items assigned yet</div>';
+
+  const addForm = isAdmin ? `
+    <div class="row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+      <div class="field"><label>Add revenue item</label>
+        <select id="pf_item">${items.filter(i => !assignedIds.has(i.revenue_item_id)).map(i => `<option value="${i.revenue_item_id}">${esc(i.harmonised_code)} — ${esc(i.item_name)}</option>`).join('')}</select>
+      </div>
+      <div class="field" style="max-width:140px"><label>&nbsp;</label><button class="btn-ghost" style="width:100%" onclick="addConsultantPortfolio(${consultantId}, '${esc(consultantName)}')">Add</button></div>
+    </div>` : '';
+
+  $('#modalBody').innerHTML = `<h3 style="margin-bottom:10px">Assigned revenue items (${portfolio.length})</h3>${rows}${addForm}`;
+  $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
+}
+
+async function addConsultantPortfolio(consultantId, consultantName) {
+  const itemId = $('#pf_item').value;
+  if (!itemId) { toast('No revenue items left to add', true); return; }
+  try {
+    await api(`/api/consultants/${consultantId}/portfolio`, { method: 'POST', body: JSON.stringify({ revenue_item_id: itemId }) });
+    toast('Revenue item assigned');
+    openConsultantPortfolio(consultantId, consultantName);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function revokeConsultantPortfolio(consultantId, portfolioId) {
+  try {
+    await api(`/api/consultants/${consultantId}/portfolio/${portfolioId}/end`, { method: 'POST' });
+    toast('Assignment revoked');
+    const name = $('#modalTitle').textContent.replace('Portfolio — ', '');
+    openConsultantPortfolio(consultantId, name);
+  } catch (e) { toast(e.message, true); }
+}
+
 /* ---------------- agents ---------------- */
 async function renderAgents() {
-  setPage('<div class="card"><div class="table-wrap" id="agentTable"><div class="empty">Loading…</div></div></div>');
+  setPage(`
+    <div class="toolbar"><div class="grow"></div><button class="btn-primary" onclick="openAgentForm()">Onboard Agent</button></div>
+    <div class="card"><div class="table-wrap" id="agentTable"><div class="empty">Loading…</div></div></div>
+  `);
   let rows;
   try { rows = await api('/api/agents'); } catch (e) { $('#agentTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   $('#agentTable').innerHTML = `
-    <table><thead><tr><th>Code</th><th>Name</th><th>Phone</th><th>Ward</th><th>Consultant</th><th class="r">Lifetime Collected</th><th>Status</th></tr></thead>
+    <table><thead><tr><th>Code</th><th>Name</th><th>Phone</th><th>Ward</th><th>Consultant</th><th class="r">Lifetime Collected</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(a => `
       <tr><td class="num">${esc(a.agent_code)}</td><td>${esc(a.full_name)}</td><td class="num">${esc(a.phone || '—')}</td>
         <td>${esc(a.ward_name || '—')}</td><td>${esc(a.consultant_name || '—')}</td>
         <td class="r num">${money(a.lifetime_collected)}</td>
-        <td><span class="tag ${a.status === 'ACTIVE' ? 'ok' : 'neutral'}">${esc(a.status)}</span></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No field agents</td></tr>'}</tbody></table>`;
+        <td><span class="tag ${a.status === 'ACTIVE' ? 'ok' : 'neutral'}">${esc(a.status)}</span></td>
+        <td><button class="btn-ghost btn-sm" onclick="openAgentActivity(${a.agent_id}, '${esc(a.full_name)}')">Activity</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">No field agents</td></tr>'}</tbody></table>`;
+}
+
+async function openAgentForm() {
+  const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
+  let wards = [], consultants = [];
+  try {
+    wards = await api('/api/wards');
+    if (isAdmin) consultants = await api('/api/consultants');
+  } catch {}
+  openModal('Onboard Agent', `
+    <div class="row"><div class="field"><label>Full name</label><input id="af_name"></div>
+      <div class="field"><label>Username</label><input id="af_username" placeholder="e.g. agent13"></div></div>
+    <div class="row"><div class="field"><label>Phone</label><input id="af_phone"></div>
+      <div class="field"><label>Ward</label><select id="af_ward"><option value="">—</option>${wards.map(w => `<option value="${w.ward_id}">${esc(w.ward_name)}</option>`).join('')}</select></div></div>
+    ${isAdmin ? `<div class="field"><label>Consultant</label><select id="af_consultant"><option value="">Council-direct (no consultant)</option>${consultants.map(c => `<option value="${c.consultant_id}">${esc(c.consultant_name)}</option>`).join('')}</select></div>` : ''}
+    <div class="card-note">Default password is <b>revac2026</b> — the agent should change it after first sign-in.</div>
+    <div id="af_err"></div>
+  `, `<button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="submitAgentForm()">Onboard</button>`);
+}
+
+async function submitAgentForm() {
+  const name = $('#af_name').value.trim();
+  const username = $('#af_username').value.trim();
+  if (!name || !username) { $('#af_err').innerHTML = '<div class="notice bad">Enter a name and a username</div>'; return; }
+  const body = { full_name: name, username, phone: $('#af_phone').value.trim(), assigned_ward_id: $('#af_ward').value || null };
+  if ($('#af_consultant')) body.consultant_id = $('#af_consultant').value || null;
+  try {
+    const r = await api('/api/agents', { method: 'POST', body: JSON.stringify(body) });
+    closeModal();
+    toast(`Agent onboarded — ${r.agent_code}`);
+    renderAgents();
+  } catch (e) { $('#af_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+}
+
+async function openAgentActivity(agentId, name) {
+  openModal(`Activity — ${name}`, '<div class="empty">Loading…</div>');
+  let d;
+  try { d = await api(`/api/agents/${agentId}/activity`); } catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  $('#modalBody').innerHTML = `
+    <h3 style="margin-bottom:8px">Daily Returns (last 30 days)</h3>
+    <div class="table-wrap">${d.daily_returns.length ? `<table><thead><tr><th>Date</th><th class="r">Visits</th><th class="r">Bills Issued</th><th class="r">Collected</th></tr></thead>
+      <tbody>${d.daily_returns.map(r => `<tr><td class="num">${d10(r.return_date)}</td><td class="r">${r.visits_count}</td><td class="r">${r.bills_issued}</td><td class="r num">${money(r.amount_collected)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No daily returns recorded</div>'}</div>
+    <h3 style="margin:18px 0 8px">Recent Payments</h3>
+    <div class="table-wrap">${d.recent_payments.length ? `<table><thead><tr><th>Payment Ref</th><th>Bill</th><th>Channel</th><th class="r">Amount</th><th>Paid At</th></tr></thead>
+      <tbody>${d.recent_payments.map(p => `<tr><td class="num">${esc(p.payment_ref)}</td><td class="num">${esc(p.bill_ref)}</td><td>${esc(p.channel_name)}</td><td class="r num">${money2(p.amount)}</td><td class="num">${dt(p.paid_at)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No payments recorded</div>'}</div>
+  `;
+  $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
 }
 
 /* ---------------- terminals ---------------- */

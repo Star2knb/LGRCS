@@ -626,17 +626,19 @@
         <h3>Register Payer</h3>
         <div id="enumOut" style="margin-bottom:12px"></div>
         <div class="field">
-          <label for="n_name">Full Name / Business Name</label>
+          <label>Registration Type</label>
+          <div style="display:flex;gap:8px">
+            <button type="button" id="n_type_individual" class="btn-primary" style="flex:1;width:auto;background:var(--line);color:var(--ink)" onclick="setEnumType('INDIVIDUAL')">Individual</button>
+            <button type="button" id="n_type_business" class="btn-primary" style="flex:1;width:auto" onclick="setEnumType('BUSINESS')">Business</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="n_name" id="n_name_label">Business Name</label>
           <input type="text" id="n_name" placeholder="Enter name">
         </div>
         <div class="field">
-          <label for="n_type">Type</label>
-          <select id="n_type">
-            <option value="INDIVIDUAL">Individual</option>
-            <option value="BUSINESS" selected>Business</option>
-            <option value="GOVERNMENT">Government</option>
-            <option value="NGO">NGO</option>
-          </select>
+          <label for="n_idnum" id="n_idnum_label">TIN</label>
+          <input type="text" id="n_idnum" placeholder="Tax Identification Number">
         </div>
         <div class="field">
           <label for="n_phone">Phone Number</label>
@@ -652,6 +654,10 @@
             <input type="text" id="n_geo" readonly placeholder="Not captured" style="background:#f9f9f9">
             <button class="btn-primary" style="width:auto;padding:0 16px;background:var(--brass)" onclick="grabGps()">GPS</button>
           </div>
+        </div>
+        <div class="field">
+          <label>Revenue Items Liable (optional)</label>
+          <div id="n_items" style="max-height:160px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:10px">Loading…</div>
         </div>
         <button class="btn-primary" onclick="registerPayer()">Register &amp; Save</button>
       </div>
@@ -701,7 +707,7 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="12" y1="4" x2="12" y2="20"></line><line x1="2" y1="12" x2="22" y2="12"></line></svg>
       Collect
     </button>
-    <button data-v="enum" onclick="go('enum')">
+    <button data-v="enum" onclick="openEnum()">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
       Register
     </button>

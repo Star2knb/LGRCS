@@ -276,9 +276,16 @@ def list_payers():
 @app.post("/api/payers")
 @auth_required("COUNCIL_ADMIN", "CONSULTANT", "AGENT")
 def create_payer():
+    """Enumeration — available to admin, consultant and agent alike. Individuals
+    and businesses get distinctly-formatted payer IDs (IND- vs C-), and any
+    revenue items selected at enumeration are recorded as DRAFT assessments
+    ready to be rolled into a harmonised bill later."""
     d = request.get_json(force=True)
     if not d.get("full_name"):
         return jsonify({"error": "Enter the payer's name"}), 400
+    payer_type = d.get("payer_type", "BUSINESS")
+    if payer_type not in ("INDIVIDUAL", "BUSINESS", "GOVERNMENT", "NGO"):
+        return jsonify({"error": "Choose a valid payer type"}), 400
 
     # Deduplication check on phone or TIN before creating a new record
     dup = None
@@ -291,22 +298,61 @@ def create_payer():
             "duplicate_of": dup,
         }), 409
 
-    seq = query("SELECT COUNT(*) AS n FROM payer", one=True)["n"] + 1
-    payer_ref = f"C-{9000000 + seq}"
     nin = d.get("nin_bvn")
+    # Two-phase ref: insert with a throwaway-unique placeholder, then derive the
+    # real payer_ref from the auto-increment payer_id so it can never collide.
     payer_id = execute(
         """INSERT INTO payer (council_id, payer_ref, payer_type, full_name, phone, email,
                               tin, nin_bvn_hash, ward_id, address, geo_lat, geo_lng,
                               kyc_status, created_by)
            VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (payer_ref, d.get("payer_type", "BUSINESS"), d["full_name"], d.get("phone"),
+        (f"TMP-{uuid.uuid4().hex}", payer_type, d["full_name"], d.get("phone"),
          d.get("email"), d.get("tin"),
          hashlib.sha256(nin.encode()).hexdigest() if nin else None,
          d.get("ward_id"), d.get("address"), d.get("geo_lat"), d.get("geo_lng"),
          "VERIFIED" if nin else "PENDING", g.current_user["user_id"]),
     )
+    prefix = "IND" if payer_type == "INDIVIDUAL" else "C"
+    payer_ref = f"{prefix}-{9000000 + payer_id}"
+    execute("UPDATE payer SET payer_ref = ? WHERE payer_id = ?", (payer_ref, payer_id))
     audit("PAYER_REGISTERED", "payer", payer_id, {"payer_ref": payer_ref})
-    return jsonify(query("SELECT * FROM payer WHERE payer_id = ?", (payer_id,), one=True)), 201
+
+    # Revenue items selected at enumeration become DRAFT assessments, priced
+    # at the current rate, ready to be billed later (individually or as one
+    # harmonised bill covering everything the payer owes).
+    created_assessments = []
+    for item_id in d.get("revenue_item_ids", []) or []:
+        rate = query(
+            """SELECT rate_id, rate_amount FROM rate_schedule WHERE revenue_item_id = ?
+               AND (effective_to IS NULL OR effective_to >= date('now'))
+               ORDER BY effective_from DESC LIMIT 1""", (item_id,), one=True)
+        if not rate:
+            continue
+        assessment_id = execute(
+            """INSERT INTO assessment (payer_id, revenue_item_id, rate_id, period_year,
+                                       quantity, assessed_amount, status, created_by)
+               VALUES (?,?,?,?,1,?, 'DRAFT', ?)""",
+            (payer_id, item_id, rate["rate_id"], datetime.now().year, rate["rate_amount"],
+             g.current_user["user_id"]),
+        )
+        created_assessments.append(assessment_id)
+
+    payer = query("SELECT * FROM payer WHERE payer_id = ?", (payer_id,), one=True)
+    payer["draft_assessments_created"] = len(created_assessments)
+    return jsonify(payer), 201
+
+
+@app.get("/api/payers/<int:payer_id>/draft-assessments")
+@auth_required()
+def payer_draft_assessments(payer_id):
+    """Revenue items enumerated for a payer but not yet rolled into a bill."""
+    return jsonify(query(
+        """SELECT a.assessment_id, a.revenue_item_id, a.quantity, a.assessed_amount,
+                  ri.item_name, ri.harmonised_code
+           FROM assessment a
+           JOIN revenue_item ri ON ri.revenue_item_id = a.revenue_item_id
+           WHERE a.payer_id = ? AND a.status = 'DRAFT'
+           ORDER BY a.created_at""", (payer_id,)))
 
 
 @app.get("/api/payers/<int:payer_id>")
@@ -366,6 +412,35 @@ def revenue_items():
            ORDER BY ri.harmonised_code"""))
 
 
+@app.post("/api/revenue-items/<int:item_id>/rate")
+@auth_required("COUNCIL_ADMIN")
+def change_revenue_item_rate(item_id):
+    """Only the Council Admin may change what a revenue item costs. Keeps
+    rate history intact: closes the current rate row and opens a new one."""
+    d = request.get_json(force=True)
+    try:
+        amount = float(d["rate_amount"])
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "Enter a valid rate amount"}), 400
+    if not query("SELECT 1 FROM revenue_item WHERE revenue_item_id = ?", (item_id,), one=True):
+        return jsonify({"error": "Revenue item not found"}), 404
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    execute("""UPDATE rate_schedule SET effective_to = date(?, '-1 day')
+               WHERE revenue_item_id = ? AND (effective_to IS NULL OR effective_to >= ?)""",
+            (today, item_id, today))
+    rate_id = execute(
+        """INSERT INTO rate_schedule (revenue_item_id, rate_amount, rate_basis,
+                                      approved_by_ref, effective_from)
+           VALUES (?,?,?,?,?)""",
+        (item_id, amount, d.get("rate_basis", "FLAT"),
+         d.get("approved_by_ref", "Admin rate change"), today),
+    )
+    audit("REVENUE_ITEM_RATE_CHANGED", "revenue_item", item_id,
+          {"new_rate": amount, "rate_id": rate_id})
+    return jsonify(query("SELECT * FROM rate_schedule WHERE rate_id = ?", (rate_id,), one=True)), 201
+
+
 @app.get("/api/revenue-categories")
 @auth_required()
 def revenue_categories():
@@ -404,53 +479,77 @@ def list_bills():
 @app.post("/api/bills")
 @auth_required("COUNCIL_ADMIN", "CONSULTANT", "AGENT")
 def create_bill():
-    """Assess and bill in one transaction — used by both portal and mobile app."""
+    """Assess and bill in one transaction — used by both portal and mobile app.
+
+    Two ways to build the harmonised bill:
+      * `lines`: explicit [{revenue_item_id, quantity}] picks, priced now.
+      * `bill_all_drafts: true`: rolls up every DRAFT assessment already
+        recorded for the payer (e.g. from enumeration) — a harmonised bill is
+        just the payer's outstanding revenue items paid together as one.
+    """
     d = request.get_json(force=True)
     lines = d.get("lines", [])
-    if not lines:
-        return jsonify({"error": "Add at least one revenue item to the bill"}), 400
-
-    payer = query("SELECT * FROM payer WHERE payer_id = ?", (d["payer_id"],), one=True)
+    payer = query("SELECT * FROM payer WHERE payer_id = ?", (d.get("payer_id"),), one=True)
     if not payer:
         return jsonify({"error": "Payer not found"}), 404
+    if not lines and not d.get("bill_all_drafts"):
+        return jsonify({"error": "Add at least one revenue item to the bill"}), 400
 
-    seq = query("SELECT COUNT(*) AS n FROM bill", one=True)["n"] + 1
-    bill_ref = f"KAC/{datetime.now():%Y}/{seq:06d}"
     consultant_id = d.get("consultant_id") or g.current_user.get("consultant_id")
     due = d.get("due_date") or (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
 
+    # Two-phase bill_ref: insert with a throwaway-unique placeholder, then
+    # derive the real reference from the auto-increment bill_id so two
+    # concurrent requests can never generate the same reference.
     bill_id = execute(
         """INSERT INTO bill (bill_ref, payer_id, consultant_id, total_amount, due_date,
                              status, issued_by)
            VALUES (?,?,?,0,?, 'ISSUED', ?)""",
-        (bill_ref, d["payer_id"], consultant_id, due, g.current_user["user_id"]),
+        (f"TMP-{uuid.uuid4().hex}", d["payer_id"], consultant_id, due, g.current_user["user_id"]),
     )
+    bill_ref = f"KAC/{datetime.now():%Y}/{bill_id:06d}"
+    execute("UPDATE bill SET bill_ref = ? WHERE bill_id = ?", (bill_ref, bill_id))
 
     total = 0.0
-    for ln in lines:
-        item = query("""SELECT ri.*, (SELECT rate_id FROM rate_schedule rs
-                          WHERE rs.revenue_item_id = ri.revenue_item_id
-                          ORDER BY rs.effective_from DESC LIMIT 1) AS rate_id,
-                          (SELECT rate_amount FROM rate_schedule rs
-                          WHERE rs.revenue_item_id = ri.revenue_item_id
-                          ORDER BY rs.effective_from DESC LIMIT 1) AS rate_amount
-                        FROM revenue_item ri WHERE ri.revenue_item_id = ?""",
-                     (ln["revenue_item_id"],), one=True)
-        if not item or item["rate_id"] is None:
-            return jsonify({"error": "That revenue item has no approved rate in the schedule"}), 400
-        qty = float(ln.get("quantity", 1))
-        amount = round(item["rate_amount"] * qty, 2)
-        assessment_id = execute(
-            """INSERT INTO assessment (payer_id, asset_id, revenue_item_id, rate_id,
-                                       consultant_id, period_year, quantity,
-                                       assessed_amount, status, created_by)
-               VALUES (?,?,?,?,?,?,?,?, 'BILLED', ?)""",
-            (d["payer_id"], ln.get("asset_id"), item["revenue_item_id"], item["rate_id"],
-             consultant_id, datetime.now().year, qty, amount, g.current_user["user_id"]),
-        )
-        execute("INSERT INTO bill_line (bill_id, assessment_id, line_amount) VALUES (?,?,?)",
-                (bill_id, assessment_id, amount))
-        total += amount
+
+    if d.get("bill_all_drafts"):
+        drafts = query("""SELECT * FROM assessment WHERE payer_id = ? AND status = 'DRAFT'""",
+                       (d["payer_id"],))
+        for a in drafts:
+            execute("""UPDATE assessment SET status = 'BILLED', consultant_id = ?
+                       WHERE assessment_id = ?""", (consultant_id, a["assessment_id"]))
+            execute("INSERT INTO bill_line (bill_id, assessment_id, line_amount) VALUES (?,?,?)",
+                    (bill_id, a["assessment_id"], a["assessed_amount"]))
+            total += a["assessed_amount"]
+    else:
+        for ln in lines:
+            item = query("""SELECT ri.*, (SELECT rate_id FROM rate_schedule rs
+                              WHERE rs.revenue_item_id = ri.revenue_item_id
+                              ORDER BY rs.effective_from DESC LIMIT 1) AS rate_id,
+                              (SELECT rate_amount FROM rate_schedule rs
+                              WHERE rs.revenue_item_id = ri.revenue_item_id
+                              ORDER BY rs.effective_from DESC LIMIT 1) AS rate_amount
+                            FROM revenue_item ri WHERE ri.revenue_item_id = ?""",
+                         (ln["revenue_item_id"],), one=True)
+            if not item or item["rate_id"] is None:
+                return jsonify({"error": "That revenue item has no approved rate in the schedule"}), 400
+            qty = float(ln.get("quantity", 1))
+            amount = round(item["rate_amount"] * qty, 2)
+            assessment_id = execute(
+                """INSERT INTO assessment (payer_id, asset_id, revenue_item_id, rate_id,
+                                           consultant_id, period_year, quantity,
+                                           assessed_amount, status, created_by)
+                   VALUES (?,?,?,?,?,?,?,?, 'BILLED', ?)""",
+                (d["payer_id"], ln.get("asset_id"), item["revenue_item_id"], item["rate_id"],
+                 consultant_id, datetime.now().year, qty, amount, g.current_user["user_id"]),
+            )
+            execute("INSERT INTO bill_line (bill_id, assessment_id, line_amount) VALUES (?,?,?)",
+                    (bill_id, assessment_id, amount))
+            total += amount
+
+    if total == 0.0:
+        execute("DELETE FROM bill WHERE bill_id = ?", (bill_id,))
+        return jsonify({"error": "This payer has no draft assessments to bill"}), 400
 
     execute("UPDATE bill SET total_amount = ? WHERE bill_id = ?", (round(total, 2), bill_id))
     audit("BILL_ISSUED", "bill", bill_id, {"bill_ref": bill_ref, "total": total})
@@ -955,6 +1054,34 @@ def consultants():
            GROUP BY sc.consultant_id ORDER BY sc.consultant_name"""))
 
 
+@app.post("/api/consultants")
+@auth_required("COUNCIL_ADMIN")
+def onboard_consultant():
+    """Admin onboards a new sub-consultant onto the platform."""
+    d = request.get_json(force=True)
+    if not d.get("consultant_name"):
+        return jsonify({"error": "Enter the consultant's name"}), 400
+    rate = d.get("commission_rate", 0)
+    try:
+        rate = float(rate)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Commission rate must be a number"}), 400
+
+    consultant_id = execute(
+        """INSERT INTO sub_consultant (council_id, consultant_code, consultant_name,
+                                       contract_ref, commission_rate, status, onboarded_at)
+           VALUES (1,?,?,?,?, 'ACTIVE', datetime('now'))""",
+        (f"SC-{uuid.uuid4().hex[:6].upper()}", d["consultant_name"],
+         d.get("contract_ref"), rate),
+    )
+    execute("UPDATE sub_consultant SET consultant_code = ? WHERE consultant_id = ?",
+            (f"SC-{consultant_id:03d}", consultant_id))
+    audit("CONSULTANT_ONBOARDED", "sub_consultant", consultant_id,
+          {"consultant_name": d["consultant_name"]})
+    return jsonify(query("SELECT * FROM sub_consultant WHERE consultant_id = ?",
+                         (consultant_id,), one=True)), 201
+
+
 @app.post("/api/consultants/<int:cid>/status")
 @auth_required("COUNCIL_ADMIN")
 def consultant_status(cid):
@@ -965,6 +1092,64 @@ def consultant_status(cid):
     execute("UPDATE sub_consultant SET status = ? WHERE consultant_id = ?", (status, cid))
     audit("CONSULTANT_STATUS_CHANGED", "sub_consultant", cid, {"status": status})
     return jsonify({"consultant_id": cid, "status": status})
+
+
+def _consultant_scope_ok(consultant_id):
+    """A CONSULTANT user may only act on their own record; admin can act on any."""
+    user = g.current_user
+    if user["access_level"] == "CONSULTANT" and user.get("consultant_id") != consultant_id:
+        return False
+    return True
+
+
+@app.get("/api/consultants/<int:cid>/portfolio")
+@auth_required("COUNCIL_ADMIN", "CONSULTANT")
+def consultant_portfolio(cid):
+    if not _consultant_scope_ok(cid):
+        return jsonify({"error": "You may only view your own portfolio"}), 403
+    return jsonify(query(
+        """SELECT cp.*, ri.item_name, ri.harmonised_code, w.ward_name
+           FROM consultant_portfolio cp
+           JOIN revenue_item ri ON ri.revenue_item_id = cp.revenue_item_id
+           LEFT JOIN ward_zone w ON w.ward_id = cp.ward_id
+           WHERE cp.consultant_id = ?
+             AND (cp.effective_to IS NULL OR cp.effective_to >= date('now'))
+           ORDER BY ri.item_name""", (cid,)))
+
+
+@app.post("/api/consultants/<int:cid>/portfolio")
+@auth_required("COUNCIL_ADMIN")
+def assign_consultant_portfolio(cid):
+    """Admin specifies which revenue items a consultant is allowed to handle."""
+    d = request.get_json(force=True)
+    if not d.get("revenue_item_id"):
+        return jsonify({"error": "Choose a revenue item"}), 400
+    if not query("SELECT 1 FROM sub_consultant WHERE consultant_id = ?", (cid,), one=True):
+        return jsonify({"error": "Consultant not found"}), 404
+    portfolio_id = execute(
+        """INSERT INTO consultant_portfolio (consultant_id, revenue_item_id, ward_id, effective_from)
+           VALUES (?,?,?,?)""",
+        (cid, d["revenue_item_id"], d.get("ward_id"),
+         d.get("effective_from") or datetime.now().strftime("%Y-%m-%d")),
+    )
+    audit("CONSULTANT_PORTFOLIO_ASSIGNED", "consultant_portfolio", portfolio_id,
+          {"consultant_id": cid, "revenue_item_id": d["revenue_item_id"]})
+    return jsonify(query("SELECT * FROM consultant_portfolio WHERE portfolio_id = ?",
+                         (portfolio_id,), one=True)), 201
+
+
+@app.post("/api/consultants/<int:cid>/portfolio/<int:portfolio_id>/end")
+@auth_required("COUNCIL_ADMIN")
+def end_consultant_portfolio(cid, portfolio_id):
+    """Revoke a consultant's access to a revenue item (keeps history intact)."""
+    row = query("SELECT * FROM consultant_portfolio WHERE portfolio_id = ? AND consultant_id = ?",
+                (portfolio_id, cid), one=True)
+    if not row:
+        return jsonify({"error": "Assignment not found"}), 404
+    execute("UPDATE consultant_portfolio SET effective_to = date('now') WHERE portfolio_id = ?",
+            (portfolio_id,))
+    audit("CONSULTANT_PORTFOLIO_REVOKED", "consultant_portfolio", portfolio_id, {"consultant_id": cid})
+    return jsonify({"portfolio_id": portfolio_id, "status": "revoked"})
 
 
 @app.get("/api/agents")
@@ -983,6 +1168,66 @@ def agents():
             LEFT JOIN ward_zone w ON w.ward_id = fa.assigned_ward_id
             LEFT JOIN sub_consultant sc ON sc.consultant_id = fa.consultant_id
             {clause} ORDER BY u.full_name""", params))
+
+
+@app.post("/api/agents")
+@auth_required("COUNCIL_ADMIN", "CONSULTANT")
+def onboard_agent():
+    """Onboard a field agent. A consultant onboards their own team; admin can
+    onboard for any consultant (or directly for the Council)."""
+    d = request.get_json(force=True)
+    if not d.get("full_name") or not d.get("username"):
+        return jsonify({"error": "Enter the agent's name and a username"}), 400
+    if query("SELECT 1 FROM app_user WHERE username = ?", (d["username"],), one=True):
+        return jsonify({"error": "That username is already taken"}), 409
+
+    consultant_id = d.get("consultant_id")
+    if g.current_user["access_level"] == "CONSULTANT":
+        consultant_id = g.current_user["consultant_id"]
+
+    role = query("SELECT role_id FROM app_role WHERE role_code = 'AGENT'", one=True)
+    user_id = execute(
+        """INSERT INTO app_user (council_id, consultant_id, role_id, username, full_name,
+                                 phone, email, password_hash)
+           VALUES (1,?,?,?,?,?,?,?)""",
+        (consultant_id, role["role_id"], d["username"], d["full_name"],
+         d.get("phone"), d.get("email"), hash_password(d.get("password") or "revac2026")),
+    )
+    seq = query("SELECT COUNT(*) AS n FROM field_agent", one=True)["n"] + 1
+    agent_id = execute(
+        """INSERT INTO field_agent (user_id, consultant_id, agent_code, assigned_ward_id,
+                                    device_imei)
+           VALUES (?,?,?,?,?)""",
+        (user_id, consultant_id, f"AG-{seq:03d}", d.get("assigned_ward_id"), d.get("device_imei")),
+    )
+    audit("AGENT_ONBOARDED", "field_agent", agent_id, {"full_name": d["full_name"]})
+    return jsonify(query(
+        """SELECT fa.*, u.full_name, u.username FROM field_agent fa
+           JOIN app_user u ON u.user_id = fa.user_id WHERE fa.agent_id = ?""",
+        (agent_id,), one=True)), 201
+
+
+@app.get("/api/agents/<int:agent_id>/activity")
+@auth_required("COUNCIL_ADMIN", "CONSULTANT")
+def agent_activity(agent_id):
+    """Daily collection activity for one agent — lets a consultant track their team."""
+    agent = query("SELECT * FROM field_agent WHERE agent_id = ?", (agent_id,), one=True)
+    if not agent:
+        return jsonify({"error": "Agent not found"}), 404
+    if (g.current_user["access_level"] == "CONSULTANT"
+            and agent["consultant_id"] != g.current_user["consultant_id"]):
+        return jsonify({"error": "You may only view your own agents"}), 403
+    returns = query(
+        """SELECT * FROM agent_daily_return WHERE agent_id = ?
+           ORDER BY return_date DESC LIMIT 30""", (agent_id,))
+    recent_payments = query(
+        """SELECT p.payment_ref, p.amount, p.paid_at, pc.channel_name, b.bill_ref
+           FROM payment p
+           JOIN payment_channel pc ON pc.channel_id = p.channel_id
+           JOIN bill b ON b.bill_id = p.bill_id
+           WHERE p.agent_id = ? ORDER BY p.paid_at DESC LIMIT 20""", (agent_id,))
+    return jsonify({"agent_id": agent_id, "daily_returns": returns,
+                    "recent_payments": recent_payments})
 
 
 @app.get("/api/terminals")
