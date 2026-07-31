@@ -416,6 +416,7 @@ async function renderBills(status) {
         <td style="white-space:nowrap">
           <button class="btn-ghost btn-sm" onclick="openDemandNotice('${esc(b.bill_ref)}')">Notice</button>
           <button class="btn-ghost btn-sm" onclick="openDemandBill('${esc(b.bill_ref)}')">Bill</button>
+          ${state.user.access_level === 'COUNCIL_ADMIN' ? `<button class="btn-ghost btn-sm" onclick="openBillEditor(${b.bill_id})">Edit</button>` : ''}
         </td></tr>`).join('') || '<tr><td colspan="8" class="empty">No bills match</td></tr>'}</tbody></table>`;
 }
 
@@ -477,6 +478,86 @@ async function submitBillForm() {
     toast(`Bill issued — ${r.bill_ref} (${money(r.total_amount)})`);
     renderBills();
   } catch (e) { $('#bf_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+}
+
+/* ---------------- bill editor (admin) ---------------- */
+async function openBillEditor(billId) {
+  openModal('Edit Bill', '<div class="empty">Loading…</div>');
+  let items = [];
+  try { window.__editingBill = await api(`/api/bills/${billId}/detail`); items = await api('/api/revenue-items'); }
+  catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  window.__editorItems = items.filter(i => i.current_rate != null);
+  renderBillEditor();
+}
+
+function renderBillEditor() {
+  const b = window.__editingBill;
+  $('#modalTitle').textContent = `Edit Bill — ${b.bill_ref}`;
+  $('#modalBody').innerHTML = `
+    <div class="kv"><span>Payer</span><b>${esc(b.full_name)} (${esc(b.payer_ref)})</b></div>
+    <div class="kv"><span>Status</span><b>${esc(b.status)}</b></div>
+    <div class="kv"><span>Paid so far</span><b class="num">${money(b.amount_paid)}</b></div>
+    <h3 style="margin:16px 0 8px">Line Items</h3>
+    ${b.lines.map(l => `
+      <div class="row" style="align-items:center;margin-bottom:8px">
+        <div style="flex:2;min-width:180px">${esc(l.harmonised_code)} — ${esc(l.item_name)}</div>
+        <div class="field" style="max-width:90px;margin:0"><input type="number" id="bl_qty_${l.bill_line_id}" value="${l.quantity}" min="0.01" step="0.01"></div>
+        <div class="field" style="max-width:130px;margin:0"><input type="number" id="bl_amt_${l.bill_line_id}" value="${l.line_amount}" min="0.01" step="0.01"></div>
+        <button class="btn-ghost btn-sm" onclick="saveBillLine(${l.bill_line_id})">Save</button>
+        <button class="btn-ghost btn-sm" onclick="deleteBillLine(${l.bill_line_id})" style="color:var(--danger)">Remove</button>
+      </div>`).join('')}
+    <div class="kv"><span><b>Total</b></span><b class="num">${money(b.total_amount)}</b></div>
+    <div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px;align-items:center">
+      <div class="field"><label>Add revenue item</label>
+        <select id="bl_new_item">${window.__editorItems.map(i => `<option value="${i.revenue_item_id}">${esc(i.harmonised_code)} — ${esc(i.item_name)} (${money(i.current_rate)})</option>`).join('')}</select>
+      </div>
+      <div class="field" style="max-width:90px"><label>Qty</label><input id="bl_new_qty" type="number" value="1" min="0.01" step="0.01"></div>
+      <div class="field" style="max-width:130px"><label>Amount</label><input id="bl_new_amt" type="number" placeholder="auto"></div>
+      <div class="field" style="max-width:110px"><label>&nbsp;</label><button class="btn-ghost" style="width:100%" onclick="addBillLineExisting()">Add</button></div>
+    </div>
+    <div id="bl_err"></div>
+  `;
+  $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
+}
+
+async function reloadBillEditor(billId) {
+  window.__editingBill = await api(`/api/bills/${billId}/detail`);
+  renderBillEditor();
+  if (state.page === 'bills') renderBills();
+}
+
+async function saveBillLine(lineId) {
+  const billId = window.__editingBill.bill_id;
+  const qty = Number($(`#bl_qty_${lineId}`).value);
+  const amount = Number($(`#bl_amt_${lineId}`).value);
+  try {
+    await api(`/api/bills/${billId}/lines/${lineId}`, { method: 'PUT', body: JSON.stringify({ quantity: qty, assessed_amount: amount }) });
+    toast('Line updated');
+    reloadBillEditor(billId);
+  } catch (e) { $('#bl_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+}
+
+async function deleteBillLine(lineId) {
+  const billId = window.__editingBill.bill_id;
+  try {
+    await api(`/api/bills/${billId}/lines/${lineId}`, { method: 'DELETE' });
+    toast('Line removed');
+    reloadBillEditor(billId);
+  } catch (e) { $('#bl_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
+}
+
+async function addBillLineExisting() {
+  const billId = window.__editingBill.bill_id;
+  const revenue_item_id = Number($('#bl_new_item').value);
+  const quantity = Number($('#bl_new_qty').value) || 1;
+  const amtRaw = $('#bl_new_amt').value;
+  const body = { revenue_item_id, quantity };
+  if (amtRaw !== '') body.assessed_amount = Number(amtRaw);
+  try {
+    await api(`/api/bills/${billId}/lines`, { method: 'POST', body: JSON.stringify(body) });
+    toast('Item added to bill');
+    reloadBillEditor(billId);
+  } catch (e) { $('#bl_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
 }
 
 /* ---------------- payments ---------------- */

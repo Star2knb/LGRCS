@@ -556,6 +556,141 @@ def create_bill():
     return jsonify({"bill_id": bill_id, "bill_ref": bill_ref, "total_amount": round(total, 2)}), 201
 
 
+def _recompute_bill(bill_id):
+    """Re-derive total_amount from its lines and re-settle status against
+    what's already been paid. Called after any edit to a bill's lines."""
+    bill = query("SELECT * FROM bill WHERE bill_id = ?", (bill_id,), one=True)
+    total = query("SELECT COALESCE(SUM(line_amount),0) AS t FROM bill_line WHERE bill_id = ?",
+                  (bill_id,), one=True)["t"]
+    if bill["amount_paid"] >= total - 0.01 and total > 0:
+        status = "PAID"
+    elif bill["amount_paid"] > 0:
+        status = "PART_PAID"
+    elif bill["due_date"] < datetime.now().strftime("%Y-%m-%d"):
+        status = "OVERDUE"
+    else:
+        status = "ISSUED"
+    execute("UPDATE bill SET total_amount = ?, status = ? WHERE bill_id = ?",
+            (round(total, 2), status, bill_id))
+    return round(total, 2), status
+
+
+@app.get("/api/bills/<int:bill_id>/detail")
+@auth_required()
+def bill_detail(bill_id):
+    """Authenticated bill detail, keyed by bill_id — used by the bill editor."""
+    bill = query(
+        """SELECT b.*, p.full_name, p.payer_ref, (b.total_amount - b.amount_paid) AS balance
+           FROM bill b JOIN payer p ON p.payer_id = b.payer_id WHERE b.bill_id = ?""",
+        (bill_id,), one=True)
+    if not bill:
+        return jsonify({"error": "Bill not found"}), 404
+    bill["lines"] = query(
+        """SELECT bl.bill_line_id, bl.assessment_id, bl.line_amount, a.quantity,
+                  ri.revenue_item_id, ri.item_name, ri.harmonised_code
+           FROM bill_line bl
+           JOIN assessment a ON a.assessment_id = bl.assessment_id
+           JOIN revenue_item ri ON ri.revenue_item_id = a.revenue_item_id
+           WHERE bl.bill_id = ? ORDER BY bl.bill_line_id""", (bill_id,))
+    return jsonify(bill)
+
+
+@app.post("/api/bills/<int:bill_id>/lines")
+@auth_required("COUNCIL_ADMIN")
+def add_bill_line(bill_id):
+    """Admin adds a revenue item to an existing bill, with an optional
+    per-payer override on the amount to charge."""
+    bill = query("SELECT * FROM bill WHERE bill_id = ?", (bill_id,), one=True)
+    if not bill:
+        return jsonify({"error": "Bill not found"}), 404
+    if bill["status"] == "CANCELLED":
+        return jsonify({"error": "This bill is cancelled — issue a new bill instead"}), 400
+
+    d = request.get_json(force=True)
+    item = query("""SELECT ri.*, (SELECT rate_id FROM rate_schedule rs
+                      WHERE rs.revenue_item_id = ri.revenue_item_id
+                        AND (rs.effective_to IS NULL OR rs.effective_to >= date('now'))
+                      ORDER BY rs.effective_from DESC LIMIT 1) AS rate_id,
+                      (SELECT rate_amount FROM rate_schedule rs
+                      WHERE rs.revenue_item_id = ri.revenue_item_id
+                        AND (rs.effective_to IS NULL OR rs.effective_to >= date('now'))
+                      ORDER BY rs.effective_from DESC LIMIT 1) AS rate_amount
+                    FROM revenue_item ri WHERE ri.revenue_item_id = ?""",
+                 (d.get("revenue_item_id"),), one=True)
+    if not item or item["rate_id"] is None:
+        return jsonify({"error": "That revenue item has no approved rate in the schedule"}), 400
+
+    qty = float(d.get("quantity", 1))
+    amount = float(d["assessed_amount"]) if d.get("assessed_amount") is not None \
+        else round(item["rate_amount"] * qty, 2)
+    assessment_id = execute(
+        """INSERT INTO assessment (payer_id, revenue_item_id, rate_id, consultant_id,
+                                   period_year, quantity, assessed_amount, status, created_by)
+           VALUES (?,?,?,?,?,?,?, 'BILLED', ?)""",
+        (bill["payer_id"], item["revenue_item_id"], item["rate_id"], bill["consultant_id"],
+         datetime.now().year, qty, amount, g.current_user["user_id"]),
+    )
+    execute("INSERT INTO bill_line (bill_id, assessment_id, line_amount) VALUES (?,?,?)",
+            (bill_id, assessment_id, amount))
+    total, status = _recompute_bill(bill_id)
+    audit("BILL_LINE_ADDED", "bill", bill_id,
+          {"revenue_item_id": item["revenue_item_id"], "amount": amount})
+    return jsonify({"bill_id": bill_id, "total_amount": total, "status": status}), 201
+
+
+@app.put("/api/bills/<int:bill_id>/lines/<int:line_id>")
+@auth_required("COUNCIL_ADMIN")
+def update_bill_line(bill_id, line_id):
+    """Admin overrides the quantity and/or cost of one line on this payer's
+    bill — a per-payer adjustment, not a change to the item's standard rate."""
+    line = query("""SELECT bl.*, a.assessment_id, a.quantity AS old_qty
+                    FROM bill_line bl JOIN assessment a ON a.assessment_id = bl.assessment_id
+                    WHERE bl.bill_line_id = ? AND bl.bill_id = ?""", (line_id, bill_id), one=True)
+    if not line:
+        return jsonify({"error": "Bill line not found"}), 404
+    bill = query("SELECT status FROM bill WHERE bill_id = ?", (bill_id,), one=True)
+    if bill["status"] == "CANCELLED":
+        return jsonify({"error": "This bill is cancelled — issue a new bill instead"}), 400
+
+    d = request.get_json(force=True)
+    qty = float(d["quantity"]) if d.get("quantity") is not None else line["old_qty"]
+    if d.get("assessed_amount") is not None:
+        amount = float(d["assessed_amount"])
+    else:
+        return jsonify({"error": "Enter the amount to charge for this line"}), 400
+    if amount <= 0:
+        return jsonify({"error": "Amount must be greater than zero"}), 400
+
+    execute("UPDATE assessment SET quantity = ?, assessed_amount = ? WHERE assessment_id = ?",
+            (qty, amount, line["assessment_id"]))
+    execute("UPDATE bill_line SET line_amount = ? WHERE bill_line_id = ?", (amount, line_id))
+    total, status = _recompute_bill(bill_id)
+    audit("BILL_LINE_UPDATED", "bill", bill_id,
+          {"bill_line_id": line_id, "new_amount": amount, "new_quantity": qty})
+    return jsonify({"bill_id": bill_id, "total_amount": total, "status": status})
+
+
+@app.delete("/api/bills/<int:bill_id>/lines/<int:line_id>")
+@auth_required("COUNCIL_ADMIN")
+def remove_bill_line(bill_id, line_id):
+    """Admin removes a revenue item from a bill. Refuses to strip the last
+    line — cancel the whole bill instead if nothing should be billed."""
+    line = query("SELECT * FROM bill_line WHERE bill_line_id = ? AND bill_id = ?",
+                (line_id, bill_id), one=True)
+    if not line:
+        return jsonify({"error": "Bill line not found"}), 404
+    remaining = query("SELECT COUNT(*) AS n FROM bill_line WHERE bill_id = ?", (bill_id,), one=True)["n"]
+    if remaining <= 1:
+        return jsonify({"error": "Can't remove the only line — cancel the bill instead"}), 400
+
+    execute("DELETE FROM bill_line WHERE bill_line_id = ?", (line_id,))
+    execute("UPDATE assessment SET status = 'CANCELLED' WHERE assessment_id = ?",
+            (line["assessment_id"],))
+    total, status = _recompute_bill(bill_id)
+    audit("BILL_LINE_REMOVED", "bill", bill_id, {"bill_line_id": line_id})
+    return jsonify({"bill_id": bill_id, "total_amount": total, "status": status})
+
+
 @app.get("/api/bills/<path:bill_ref>")
 def bill_lookup(bill_ref):
     """Public bill lookup — powers the citizen self-service portal, USSD and the
