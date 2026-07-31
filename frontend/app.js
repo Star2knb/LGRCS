@@ -408,16 +408,13 @@ async function renderBills(status) {
   try { rows = await api('/api/bills?' + qs({ status })); } catch (e) { $('#billTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   const tagOf = s => s === 'PAID' ? 'ok' : s === 'OVERDUE' ? 'bad' : s === 'PART_PAID' ? 'warn' : s === 'CANCELLED' ? 'neutral' : 'brass';
   $('#billTable').innerHTML = `
-    <table><thead><tr><th>Bill Ref</th><th>Payer</th><th>Consultant</th><th class="r">Total</th><th class="r">Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
+    <table><thead><tr><th>Bill Ref</th><th>Payer</th><th>Consultant</th><th class="r">Total</th><th class="r">Balance</th><th>Due</th><th>Status</th></tr></thead>
     <tbody>${rows.map(b => `
-      <tr><td class="num">${esc(b.bill_ref)}</td><td>${esc(b.full_name)}</td><td>${esc(b.consultant_name || '—')}</td>
+      <tr style="cursor:pointer" onclick="openBillDetail(${b.bill_id})">
+        <td class="num">${esc(b.bill_ref)}</td><td>${esc(b.full_name)}</td><td>${esc(b.consultant_name || '—')}</td>
         <td class="r num">${money(b.total_amount)}</td><td class="r num">${money(b.balance)}</td>
         <td class="num">${d10(b.due_date)}</td><td><span class="tag ${tagOf(b.status)}">${esc(b.status.replace('_', ' '))}</span></td>
-        <td style="white-space:nowrap">
-          <button class="btn-ghost btn-sm" onclick="openDemandNotice('${esc(b.bill_ref)}')">Notice</button>
-          <button class="btn-ghost btn-sm" onclick="openDemandBill('${esc(b.bill_ref)}')">Bill</button>
-          ${state.user.access_level === 'COUNCIL_ADMIN' ? `<button class="btn-ghost btn-sm" onclick="openBillEditor(${b.bill_id})">Edit</button>` : ''}
-        </td></tr>`).join('') || '<tr><td colspan="8" class="empty">No bills match</td></tr>'}</tbody></table>`;
+        </tr>`).join('') || '<tr><td colspan="7" class="empty">No bills match</td></tr>'}</tbody></table>`;
 }
 
 let billLines = [];
@@ -480,33 +477,41 @@ async function submitBillForm() {
   } catch (e) { $('#bf_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
 }
 
-/* ---------------- bill editor (admin) ---------------- */
-async function openBillEditor(billId) {
-  openModal('Edit Bill', '<div class="empty">Loading…</div>');
+/* ---------------- bill detail (view + admin edit, in one place) ---------------- */
+async function openBillDetail(billId) {
+  openModal('Bill', '<div class="empty">Loading…</div>');
+  const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
   let items = [];
-  try { window.__editingBill = await api(`/api/bills/${billId}/detail`); items = await api('/api/revenue-items'); }
-  catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  try {
+    window.__editingBill = await api(`/api/bills/${billId}/detail`);
+    if (isAdmin) items = await api('/api/revenue-items');
+  } catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   window.__editorItems = items.filter(i => i.current_rate != null);
   renderBillEditor();
 }
 
 function renderBillEditor() {
   const b = window.__editingBill;
-  $('#modalTitle').textContent = `Edit Bill — ${b.bill_ref}`;
+  const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
+  const tagOf = s => s === 'PAID' ? 'ok' : s === 'OVERDUE' ? 'bad' : s === 'PART_PAID' ? 'warn' : s === 'CANCELLED' ? 'neutral' : 'brass';
+  $('#modalTitle').textContent = `Bill — ${b.bill_ref}`;
   $('#modalBody').innerHTML = `
     <div class="kv"><span>Payer</span><b>${esc(b.full_name)} (${esc(b.payer_ref)})</b></div>
-    <div class="kv"><span>Status</span><b>${esc(b.status)}</b></div>
+    <div class="kv"><span>Status</span><b><span class="tag ${tagOf(b.status)}">${esc(b.status.replace('_', ' '))}</span></b></div>
     <div class="kv"><span>Paid so far</span><b class="num">${money(b.amount_paid)}</b></div>
     <h3 style="margin:16px 0 8px">Line Items</h3>
-    ${b.lines.map(l => `
+    ${b.lines.map(l => isAdmin ? `
       <div class="row" style="align-items:center;margin-bottom:8px">
         <div style="flex:2;min-width:180px">${esc(l.harmonised_code)} — ${esc(l.item_name)}</div>
         <div class="field" style="max-width:90px;margin:0"><input type="number" id="bl_qty_${l.bill_line_id}" value="${l.quantity}" min="0.01" step="0.01"></div>
         <div class="field" style="max-width:130px;margin:0"><input type="number" id="bl_amt_${l.bill_line_id}" value="${l.line_amount}" min="0.01" step="0.01"></div>
         <button class="btn-ghost btn-sm" onclick="saveBillLine(${l.bill_line_id})">Save</button>
         <button class="btn-ghost btn-sm" onclick="deleteBillLine(${l.bill_line_id})" style="color:var(--danger)">Remove</button>
-      </div>`).join('')}
+      </div>` : `
+      <div class="kv"><span>${esc(l.harmonised_code)} — ${esc(l.item_name)}</span><b class="num">${money(l.line_amount)}</b></div>`
+    ).join('')}
     <div class="kv"><span><b>Total</b></span><b class="num">${money(b.total_amount)}</b></div>
+    ${isAdmin ? `
     <div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px;align-items:center">
       <div class="field"><label>Add revenue item</label>
         <select id="bl_new_item">${window.__editorItems.map(i => `<option value="${i.revenue_item_id}">${esc(i.harmonised_code)} — ${esc(i.item_name)} (${money(i.current_rate)})</option>`).join('')}</select>
@@ -514,10 +519,13 @@ function renderBillEditor() {
       <div class="field" style="max-width:90px"><label>Qty</label><input id="bl_new_qty" type="number" value="1" min="0.01" step="0.01"></div>
       <div class="field" style="max-width:130px"><label>Amount</label><input id="bl_new_amt" type="number" placeholder="auto"></div>
       <div class="field" style="max-width:110px"><label>&nbsp;</label><button class="btn-ghost" style="width:100%" onclick="addBillLineExisting()">Add</button></div>
-    </div>
+    </div>` : ''}
     <div id="bl_err"></div>
   `;
-  $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
+  $('#modalFoot').innerHTML = `
+    <button class="btn-ghost" onclick="openDemandNotice('${esc(b.bill_ref)}')">Demand Notice</button>
+    <button class="btn-ghost" onclick="openDemandBill('${esc(b.bill_ref)}')">Demand Bill</button>
+    <button class="btn-ghost" onclick="closeModal()">Close</button>`;
 }
 
 async function reloadBillEditor(billId) {
@@ -579,13 +587,27 @@ async function renderReceipts() {
   setPage('<div class="card"><div class="table-wrap" id="rcptTable"><div class="empty">Loading…</div></div></div>');
   let rows;
   try { rows = await api('/api/receipts'); } catch (e) { $('#rcptTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  window.__receiptRows = rows;
   $('#rcptTable').innerHTML = `
-    <table><thead><tr><th>Receipt Ref</th><th>Bill</th><th>Payer</th><th>Channel</th><th class="r">Amount</th><th>Issued</th><th>Verified</th><th></th></tr></thead>
+    <table><thead><tr><th>Receipt Ref</th><th>Bill</th><th>Payer</th><th>Channel</th><th class="r">Amount</th><th>Issued</th><th>Verified</th></tr></thead>
     <tbody>${rows.map(r => `
-      <tr><td class="num">${esc(r.receipt_ref)}</td><td class="num">${esc(r.bill_ref)}</td><td>${esc(r.full_name)}</td>
+      <tr style="cursor:pointer" onclick="openReceiptDetail(${r.receipt_id})">
+        <td class="num">${esc(r.receipt_ref)}</td><td class="num">${esc(r.bill_ref)}</td><td>${esc(r.full_name)}</td>
         <td>${esc(r.channel_name)}</td><td class="r num">${money2(r.amount)}</td><td class="num">${dt(r.issued_at)}</td>
-        <td class="r">${r.verified_count}</td>
-        <td><button class="btn-ghost btn-sm" onclick="verifyReceipt('${r.qr_token}')">Verify</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">No receipts issued yet</td></tr>'}</tbody></table>`;
+        <td class="r">${r.verified_count}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No receipts issued yet</td></tr>'}</tbody></table>`;
+}
+
+function openReceiptDetail(receiptId) {
+  const r = window.__receiptRows.find(x => x.receipt_id === receiptId);
+  if (!r) return;
+  openModal(`Receipt — ${r.receipt_ref}`, `
+    <div class="kv"><span>Bill</span><b class="num">${esc(r.bill_ref)}</b></div>
+    <div class="kv"><span>Payer</span><b>${esc(r.full_name)}</b></div>
+    <div class="kv"><span>Channel</span><b>${esc(r.channel_name)}</b></div>
+    <div class="kv"><span>Amount</span><b class="num">${money2(r.amount)}</b></div>
+    <div class="kv"><span>Issued</span><b class="num">${dt(r.issued_at)}</b></div>
+    <div class="kv"><span>Times verified</span><b>${r.verified_count}</b></div>
+  `, `<button class="btn-brass" onclick="verifyReceipt('${r.qr_token}')">Verify</button><button class="btn-ghost" onclick="closeModal()">Close</button>`);
 }
 
 async function verifyReceipt(token) {
@@ -682,16 +704,31 @@ async function renderDebt() {
 }
 
 async function loadDebt() {
-  const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
   let rows;
   try { rows = await api('/api/debt'); } catch (e) { $('#debtTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  window.__debtRows = rows;
   $('#debtTable').innerHTML = `
-    <table><thead><tr><th>Bill</th><th>Payer</th><th class="r">Balance</th><th>Ageing</th><th>Stage</th><th class="r">Reminders</th>${isAdmin ? '<th></th>' : ''}</tr></thead>
+    <table><thead><tr><th>Bill</th><th>Payer</th><th class="r">Balance</th><th>Ageing</th><th>Stage</th><th class="r">Reminders</th></tr></thead>
     <tbody>${rows.map(d => `
-      <tr><td class="num">${esc(d.bill_ref)}</td><td>${esc(d.full_name)}</td><td class="r num">${money(d.balance)}</td>
+      <tr style="cursor:pointer" onclick="openDebtDetail(${d.debt_id})">
+        <td class="num">${esc(d.bill_ref)}</td><td>${esc(d.full_name)}</td><td class="r num">${money(d.balance)}</td>
         <td><span class="tag ${d.ageing_bucket === 'OVER_90' ? 'bad' : d.ageing_bucket === '0_30' ? 'ok' : 'warn'}">${esc(d.ageing_bucket.replace('_', '–'))}</span></td>
-        <td>${esc(d.enforcement_stage.replace('_', ' '))}</td><td class="r">${d.reminder_count}</td>
-        ${isAdmin ? `<td><button class="btn-ghost btn-sm" onclick="escalateDebt(${d.debt_id})" ${d.enforcement_stage === 'CLOSED' ? 'disabled' : ''}>Escalate</button></td>` : ''}</tr>`).join('') || `<tr><td colspan="${isAdmin ? 7 : 6}" class="empty">No open debt cases</td></tr>`}</tbody></table>`;
+        <td>${esc(d.enforcement_stage.replace('_', ' '))}</td><td class="r">${d.reminder_count}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No open debt cases</td></tr>'}</tbody></table>`;
+}
+
+function openDebtDetail(debtId) {
+  const d = window.__debtRows.find(x => x.debt_id === debtId);
+  if (!d) return;
+  const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
+  openModal(`Debt Case — ${d.bill_ref}`, `
+    <div class="kv"><span>Payer</span><b>${esc(d.full_name)}</b></div>
+    <div class="kv"><span>Phone</span><b class="num">${esc(d.phone || '—')}</b></div>
+    <div class="kv"><span>Balance</span><b class="num">${money(d.balance)}</b></div>
+    <div class="kv"><span>Due date</span><b class="num">${d10(d.due_date)}</b></div>
+    <div class="kv"><span>Ageing</span><b>${esc(d.ageing_bucket.replace('_', '–'))}</b></div>
+    <div class="kv"><span>Enforcement stage</span><b>${esc(d.enforcement_stage.replace('_', ' '))}</b></div>
+    <div class="kv"><span>Reminders sent</span><b>${d.reminder_count}</b></div>
+  `, `${isAdmin ? `<button class="btn-brass" onclick="escalateDebt(${d.debt_id})" ${d.enforcement_stage === 'CLOSED' ? 'disabled' : ''}>Escalate</button>` : ''}<button class="btn-ghost" onclick="closeModal()">Close</button>`);
 }
 
 async function refreshDebt() {
@@ -705,6 +742,7 @@ async function escalateDebt(id) {
   try {
     const r = await api(`/api/debt/${id}/escalate`, { method: 'POST' });
     toast(`Case escalated to ${r.enforcement_stage.replace('_', ' ')}`);
+    closeModal();
     loadDebt();
   } catch (e) { toast(e.message, true); }
 }
@@ -714,22 +752,34 @@ async function renderRevenueItems() {
   setPage('<div class="card"><div class="table-wrap" id="riTable"><div class="empty">Loading…</div></div></div>');
   let rows;
   try { rows = await api('/api/revenue-items'); } catch (e) { $('#riTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  window.__riRows = rows;
   $('#riTable').innerHTML = `
-    <table><thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Unit</th><th class="r">Current Rate</th><th>In Scope</th><th></th></tr></thead>
+    <table><thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Unit</th><th class="r">Current Rate</th><th>In Scope</th></tr></thead>
     <tbody>${rows.map(i => `
-      <tr><td class="num">${esc(i.harmonised_code)}</td><td>${esc(i.item_name)}</td><td>${esc(i.category_name)}</td>
+      <tr style="cursor:pointer" onclick="openRevenueItemDetail(${i.revenue_item_id})">
+        <td class="num">${esc(i.harmonised_code)}</td><td>${esc(i.item_name)}</td><td>${esc(i.category_name)}</td>
         <td>${esc(i.unit_of_charge || '—')}</td><td class="r num">${i.current_rate != null ? money(i.current_rate) : '—'}</td>
-        <td><span class="tag ${i.in_initial_scope ? 'ok' : 'neutral'}">${i.in_initial_scope ? 'Yes' : 'No'}</span></td>
-        <td><button class="btn-ghost btn-sm" onclick="openRateForm(${i.revenue_item_id}, '${esc(i.item_name)}', ${i.current_rate || 0})">Change Rate</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No revenue items</td></tr>'}</tbody></table>`;
+        <td><span class="tag ${i.in_initial_scope ? 'ok' : 'neutral'}">${i.in_initial_scope ? 'Yes' : 'No'}</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">No revenue items</td></tr>'}</tbody></table>`;
 }
 
-function openRateForm(itemId, itemName, currentRate) {
-  openModal(`Change Rate — ${itemName}`, `
-    <div class="field"><label>New rate amount</label><input id="rf_amount" type="number" value="${currentRate}" step="1"></div>
-    <div class="field"><label>Approval reference</label><input id="rf_ref" placeholder="e.g. Council resolution ref"></div>
-    <div class="card-note">The current rate closes out today and this becomes effective immediately. History is kept, not overwritten.</div>
-    <div id="rf_err"></div>
-  `, `<button class="btn-ghost" onclick="closeModal()">Cancel</button><button class="btn-primary" onclick="submitRateForm(${itemId})">Save Rate</button>`);
+function openRevenueItemDetail(itemId) {
+  const i = window.__riRows.find(x => x.revenue_item_id === itemId);
+  if (!i) return;
+  const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
+  openModal(i.item_name, `
+    <div class="kv"><span>Code</span><b class="num">${esc(i.harmonised_code)}</b></div>
+    <div class="kv"><span>Category</span><b>${esc(i.category_name)}</b></div>
+    <div class="kv"><span>Unit of charge</span><b>${esc(i.unit_of_charge || '—')}</b></div>
+    <div class="kv"><span>Current rate</span><b class="num">${i.current_rate != null ? money(i.current_rate) : '—'}</b></div>
+    <div class="kv"><span>In initial scope</span><b>${i.in_initial_scope ? 'Yes' : 'No'}</b></div>
+    ${isAdmin ? `
+    <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+      <div class="field"><label>New rate amount</label><input id="rf_amount" type="number" value="${i.current_rate || 0}" step="1"></div>
+      <div class="field"><label>Approval reference</label><input id="rf_ref" placeholder="e.g. Council resolution ref"></div>
+      <div class="card-note">The current rate closes out today and this becomes effective immediately. History is kept, not overwritten.</div>
+      <div id="rf_err"></div>
+    </div>` : ''}
+  `, `${isAdmin ? `<button class="btn-primary" onclick="submitRateForm(${itemId})">Save Rate</button>` : ''}<button class="btn-ghost" onclick="closeModal()">Close</button>`);
 }
 
 async function submitRateForm(itemId) {
@@ -755,17 +805,14 @@ async function renderConsultants() {
   `);
   let rows;
   try { rows = await api('/api/consultants'); } catch (e) { $('#consTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  window.__consRows = rows;
   $('#consTable').innerHTML = `
-    <table><thead><tr><th>Consultant</th><th>Code</th><th class="r">Commission Rate</th><th class="r">Agents</th><th>Status</th><th></th>${isAdmin ? '<th></th>' : ''}</tr></thead>
+    <table><thead><tr><th>Consultant</th><th>Code</th><th class="r">Commission Rate</th><th class="r">Agents</th><th>Status</th></tr></thead>
     <tbody>${rows.map(c => `
-      <tr><td>${esc(c.consultant_name)}</td><td class="num">${esc(c.consultant_code)}</td>
+      <tr style="cursor:pointer" onclick="openConsultantDetail(${c.consultant_id})">
+        <td>${esc(c.consultant_name)}</td><td class="num">${esc(c.consultant_code)}</td>
         <td class="r num">${c.commission_rate}%</td><td class="r">${c.agents}</td>
-        <td><span class="tag ${c.status === 'ACTIVE' ? 'ok' : c.status === 'SUSPENDED' ? 'bad' : 'neutral'}">${esc(c.status)}</span></td>
-        <td><button class="btn-ghost btn-sm" onclick="openConsultantPortfolio(${c.consultant_id}, '${esc(c.consultant_name)}')">Portfolio</button></td>
-        ${isAdmin ? `<td>
-          <select onchange="changeConsultantStatus(${c.consultant_id}, this.value)" style="width:auto">
-            ${['PENDING', 'ACTIVE', 'SUSPENDED', 'EXITED'].map(s => `<option value="${s}" ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}
-          </select></td>` : ''}</tr>`).join('') || `<tr><td colspan="${isAdmin ? 7 : 6}" class="empty">No consultants onboarded</td></tr>`}</tbody></table>`;
+        <td><span class="tag ${c.status === 'ACTIVE' ? 'ok' : c.status === 'SUSPENDED' ? 'bad' : 'neutral'}">${esc(c.status)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No consultants onboarded</td></tr>'}</tbody></table>`;
 }
 
 async function changeConsultantStatus(id, status) {
@@ -774,6 +821,26 @@ async function changeConsultantStatus(id, status) {
     toast('Status updated');
     renderConsultants();
   } catch (e) { toast(e.message, true); }
+}
+
+function openConsultantDetail(consultantId) {
+  const c = window.__consRows.find(x => x.consultant_id === consultantId);
+  if (!c) return;
+  const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
+  openModal(c.consultant_name, `
+    <div class="kv"><span>Code</span><b class="num">${esc(c.consultant_code)}</b></div>
+    <div class="kv"><span>Commission rate</span><b class="num">${c.commission_rate}%</b></div>
+    <div class="kv"><span>Agents</span><b>${c.agents}</b></div>
+    <div class="kv"><span>Status</span><b>
+      ${isAdmin
+        ? `<select onchange="changeConsultantStatus(${c.consultant_id}, this.value)" style="width:auto;display:inline-block">
+             ${['PENDING', 'ACTIVE', 'SUSPENDED', 'EXITED'].map(s => `<option value="${s}" ${s === c.status ? 'selected' : ''}>${s}</option>`).join('')}
+           </select>`
+        : `<span class="tag ${c.status === 'ACTIVE' ? 'ok' : c.status === 'SUSPENDED' ? 'bad' : 'neutral'}">${esc(c.status)}</span>`}
+    </b></div>
+    <div id="cd_portfolio" style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px"><div class="empty">Loading portfolio…</div></div>
+  `, `<button class="btn-ghost" onclick="closeModal()">Close</button>`);
+  loadConsultantPortfolioInto('cd_portfolio', consultantId, c.consultant_name);
 }
 
 function openConsultantForm() {
@@ -801,51 +868,48 @@ async function submitConsultantForm() {
   } catch (e) { $('#cf_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
 }
 
-async function openConsultantPortfolio(consultantId, consultantName) {
+async function loadConsultantPortfolioInto(targetId, consultantId, consultantName) {
   const isAdmin = state.user.access_level === 'COUNCIL_ADMIN';
-  openModal(`Portfolio — ${consultantName}`, '<div class="empty">Loading…</div>');
   let portfolio, items;
   try {
     [portfolio, items] = await Promise.all([
       api(`/api/consultants/${consultantId}/portfolio`),
       isAdmin ? api('/api/revenue-items') : Promise.resolve([]),
     ]);
-  } catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  } catch (e) { $('#' + targetId).innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
 
   const assignedIds = new Set(portfolio.map(p => p.revenue_item_id));
   const rows = portfolio.map(p => `
     <div class="kv"><span>${esc(p.harmonised_code)} — ${esc(p.item_name)}${p.ward_name ? ' · ' + esc(p.ward_name) : ''}</span>
-      <b>${isAdmin ? `<a href="javascript:void(0)" onclick="revokeConsultantPortfolio(${consultantId}, ${p.portfolio_id})" style="color:var(--danger);font-weight:400">revoke</a>` : ''}</b></div>
+      <b>${isAdmin ? `<a href="javascript:void(0)" onclick="revokeConsultantPortfolio('${targetId}', ${consultantId}, ${p.portfolio_id}, '${esc(consultantName)}')" style="color:var(--danger);font-weight:400">revoke</a>` : ''}</b></div>
   `).join('') || '<div class="empty">No revenue items assigned yet</div>';
 
   const addForm = isAdmin ? `
-    <div class="row" style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+    <div class="row" style="margin-top:14px">
       <div class="field"><label>Add revenue item</label>
         <select id="pf_item">${items.filter(i => !assignedIds.has(i.revenue_item_id)).map(i => `<option value="${i.revenue_item_id}">${esc(i.harmonised_code)} — ${esc(i.item_name)}</option>`).join('')}</select>
       </div>
-      <div class="field" style="max-width:140px"><label>&nbsp;</label><button class="btn-ghost" style="width:100%" onclick="addConsultantPortfolio(${consultantId}, '${esc(consultantName)}')">Add</button></div>
+      <div class="field" style="max-width:140px"><label>&nbsp;</label><button class="btn-ghost" style="width:100%" onclick="addConsultantPortfolio('${targetId}', ${consultantId}, '${esc(consultantName)}')">Add</button></div>
     </div>` : '';
 
-  $('#modalBody').innerHTML = `<h3 style="margin-bottom:10px">Assigned revenue items (${portfolio.length})</h3>${rows}${addForm}`;
-  $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
+  $('#' + targetId).innerHTML = `<h3 style="margin-bottom:10px">Assigned revenue items (${portfolio.length})</h3>${rows}${addForm}`;
 }
 
-async function addConsultantPortfolio(consultantId, consultantName) {
+async function addConsultantPortfolio(targetId, consultantId, consultantName) {
   const itemId = $('#pf_item').value;
   if (!itemId) { toast('No revenue items left to add', true); return; }
   try {
     await api(`/api/consultants/${consultantId}/portfolio`, { method: 'POST', body: JSON.stringify({ revenue_item_id: itemId }) });
     toast('Revenue item assigned');
-    openConsultantPortfolio(consultantId, consultantName);
+    loadConsultantPortfolioInto(targetId, consultantId, consultantName);
   } catch (e) { toast(e.message, true); }
 }
 
-async function revokeConsultantPortfolio(consultantId, portfolioId) {
+async function revokeConsultantPortfolio(targetId, consultantId, portfolioId, consultantName) {
   try {
     await api(`/api/consultants/${consultantId}/portfolio/${portfolioId}/end`, { method: 'POST' });
     toast('Assignment revoked');
-    const name = $('#modalTitle').textContent.replace('Portfolio — ', '');
-    openConsultantPortfolio(consultantId, name);
+    loadConsultantPortfolioInto(targetId, consultantId, consultantName);
   } catch (e) { toast(e.message, true); }
 }
 
@@ -857,14 +921,15 @@ async function renderAgents() {
   `);
   let rows;
   try { rows = await api('/api/agents'); } catch (e) { $('#agentTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
+  window.__agentRows = rows;
   $('#agentTable').innerHTML = `
-    <table><thead><tr><th>Code</th><th>Name</th><th>Phone</th><th>Ward</th><th>Consultant</th><th class="r">Lifetime Collected</th><th>Status</th><th></th></tr></thead>
+    <table><thead><tr><th>Code</th><th>Name</th><th>Phone</th><th>Ward</th><th>Consultant</th><th class="r">Lifetime Collected</th><th>Status</th></tr></thead>
     <tbody>${rows.map(a => `
-      <tr><td class="num">${esc(a.agent_code)}</td><td>${esc(a.full_name)}</td><td class="num">${esc(a.phone || '—')}</td>
+      <tr style="cursor:pointer" onclick="openAgentDetail(${a.agent_id})">
+        <td class="num">${esc(a.agent_code)}</td><td>${esc(a.full_name)}</td><td class="num">${esc(a.phone || '—')}</td>
         <td>${esc(a.ward_name || '—')}</td><td>${esc(a.consultant_name || '—')}</td>
         <td class="r num">${money(a.lifetime_collected)}</td>
-        <td><span class="tag ${a.status === 'ACTIVE' ? 'ok' : 'neutral'}">${esc(a.status)}</span></td>
-        <td><button class="btn-ghost btn-sm" onclick="openAgentActivity(${a.agent_id}, '${esc(a.full_name)}')">Activity</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">No field agents</td></tr>'}</tbody></table>`;
+        <td><span class="tag ${a.status === 'ACTIVE' ? 'ok' : 'neutral'}">${esc(a.status)}</span></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No field agents</td></tr>'}</tbody></table>`;
 }
 
 async function openAgentForm() {
@@ -899,12 +964,20 @@ async function submitAgentForm() {
   } catch (e) { $('#af_err').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; }
 }
 
-async function openAgentActivity(agentId, name) {
-  openModal(`Activity — ${name}`, '<div class="empty">Loading…</div>');
+async function openAgentDetail(agentId) {
+  const a = window.__agentRows.find(x => x.agent_id === agentId);
+  if (!a) return;
+  openModal(a.full_name, '<div class="empty">Loading…</div>');
   let d;
   try { d = await api(`/api/agents/${agentId}/activity`); } catch (e) { $('#modalBody').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   $('#modalBody').innerHTML = `
-    <h3 style="margin-bottom:8px">Daily Returns (last 30 days)</h3>
+    <div class="kv"><span>Code</span><b class="num">${esc(a.agent_code)}</b></div>
+    <div class="kv"><span>Phone</span><b class="num">${esc(a.phone || '—')}</b></div>
+    <div class="kv"><span>Ward</span><b>${esc(a.ward_name || '—')}</b></div>
+    <div class="kv"><span>Consultant</span><b>${esc(a.consultant_name || '—')}</b></div>
+    <div class="kv"><span>Status</span><b><span class="tag ${a.status === 'ACTIVE' ? 'ok' : 'neutral'}">${esc(a.status)}</span></b></div>
+    <div class="kv"><span>Lifetime collected</span><b class="num">${money(a.lifetime_collected)}</b></div>
+    <h3 style="margin:18px 0 8px">Daily Returns (last 30 days)</h3>
     <div class="table-wrap">${d.daily_returns.length ? `<table><thead><tr><th>Date</th><th class="r">Visits</th><th class="r">Bills Issued</th><th class="r">Collected</th></tr></thead>
       <tbody>${d.daily_returns.map(r => `<tr><td class="num">${d10(r.return_date)}</td><td class="r">${r.visits_count}</td><td class="r">${r.bills_issued}</td><td class="r num">${money(r.amount_collected)}</td></tr>`).join('')}</tbody></table>` : '<div class="empty">No daily returns recorded</div>'}</div>
     <h3 style="margin:18px 0 8px">Recent Payments</h3>
