@@ -185,6 +185,11 @@ tbody tr:hover { background: #FAFCFB; }
 td.r, th.r { text-align: right; }
 .table-wrap { overflow-x: auto; }
 
+.row-click { cursor: pointer; transition: background .12s ease; }
+.row-click:hover { background: var(--green-100); }
+td.chev { width: 22px; text-align: center; color: var(--ink-40); font-size: 14px; transition: transform .12s ease, color .12s ease; }
+tr.row-click:hover td.chev { color: var(--green-700); transform: translateX(2px); }
+
 .tag {
   display: inline-block; font-size: 10.5px; font-weight: 600; padding: 2.5px 8px;
   border-radius: 999px; letter-spacing: .03em;

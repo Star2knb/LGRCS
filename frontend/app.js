@@ -190,10 +190,10 @@ function printDocViewer() {
   if (win) win.print();
 }
 function openDemandNotice(billRef) {
-  openDoc('Harmonised Demand Notice', '/frontend/demand-notice.html?bill=' + encodeURIComponent(billRef));
+  openDoc('Print Preview — Harmonised Demand Notice', '/frontend/demand-notice.html?bill=' + encodeURIComponent(billRef));
 }
 function openDemandBill(billRef) {
-  openDoc('Harmonised Demand Bill', '/frontend/demand-bill.html?bill=' + encodeURIComponent(billRef));
+  openDoc('Print Preview — Harmonised Demand Bill', '/frontend/demand-bill.html?bill=' + encodeURIComponent(billRef));
 }
 
 /* ---------------- dashboard ---------------- */
@@ -292,13 +292,14 @@ async function renderPayers(q) {
   let rows;
   try { rows = await api('/api/payers?' + qs({ q })); } catch (e) { $('#payerTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   $('#payerTable').innerHTML = `
-    <table><thead><tr><th>Payer Ref</th><th>Name</th><th>Type</th><th>Ward</th><th>Phone</th><th>KYC</th></tr></thead>
+    <table><thead><tr><th>Payer Ref</th><th>Name</th><th>Type</th><th>Ward</th><th>Phone</th><th>KYC</th><th></th></tr></thead>
     <tbody>${rows.map(p => `
-      <tr style="cursor:pointer" onclick="openPayerDetail(${p.payer_id})">
+      <tr class="row-click" onclick="openPayerDetail(${p.payer_id})">
         <td class="num">${esc(p.payer_ref)}</td><td>${esc(p.full_name)}</td><td>${esc(p.payer_type)}</td>
         <td>${esc(p.ward_name || '—')}</td><td class="num">${esc(p.phone || '—')}</td>
         <td><span class="tag ${p.kyc_status === 'VERIFIED' ? 'ok' : p.kyc_status === 'FLAGGED' ? 'bad' : 'warn'}">${esc(p.kyc_status)}</span></td>
-      </tr>`).join('') || '<tr><td colspan="6" class="empty">No payers match</td></tr>'}</tbody></table>`;
+        <td class="chev">&rsaquo;</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="empty">No payers match</td></tr>'}</tbody></table>`;
 }
 
 async function openPayerDetail(id) {
@@ -323,9 +324,12 @@ async function openPayerDetail(id) {
       <button class="btn-brass btn-sm" style="margin-top:8px" onclick="issueHarmonizedBill(${p.payer_id})">Issue Harmonized Bill</button>
     ` : '<div class="empty">Nothing pending — enumerate revenue items for this payer to build one up</div>'}
     <h3 style="margin:18px 0 8px">Bills (${p.bills.length})</h3>
-    ${p.bills.map(b => `<div class="kv"><span>${esc(b.bill_ref)} · due ${d10(b.due_date)}</span><b class="num">${money(b.balance)} of ${money(b.total_amount)}
-      <a href="javascript:void(0)" onclick="openDemandNotice('${esc(b.bill_ref)}')" style="margin-left:8px;font-weight:400">notice</a>
-      <a href="javascript:void(0)" onclick="openDemandBill('${esc(b.bill_ref)}')" style="margin-left:6px;font-weight:400">bill</a></b></div>`).join('') || '<div class="empty">No bills</div>'}
+    ${p.bills.map(b => `<div class="kv row-click" style="border-radius:6px;padding-left:6px;padding-right:6px" onclick="closeModal();openBillDetail(${b.bill_id})">
+      <span>${esc(b.bill_ref)} · due ${d10(b.due_date)}</span>
+      <b class="num">${money(b.balance)} of ${money(b.total_amount)}
+        <a href="javascript:void(0)" onclick="event.stopPropagation();openDemandNotice('${esc(b.bill_ref)}')" style="margin-left:8px;font-weight:400">print notice</a>
+        <a href="javascript:void(0)" onclick="event.stopPropagation();openDemandBill('${esc(b.bill_ref)}')" style="margin-left:6px;font-weight:400">print bill</a>
+      </b></div>`).join('') || '<div class="empty">No bills</div>'}
   `;
   $('#modalFoot').innerHTML = `<button class="btn-ghost" onclick="closeModal()">Close</button>`;
 }
@@ -408,13 +412,14 @@ async function renderBills(status) {
   try { rows = await api('/api/bills?' + qs({ status })); } catch (e) { $('#billTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   const tagOf = s => s === 'PAID' ? 'ok' : s === 'OVERDUE' ? 'bad' : s === 'PART_PAID' ? 'warn' : s === 'CANCELLED' ? 'neutral' : 'brass';
   $('#billTable').innerHTML = `
-    <table><thead><tr><th>Bill Ref</th><th>Payer</th><th>Consultant</th><th class="r">Total</th><th class="r">Balance</th><th>Due</th><th>Status</th></tr></thead>
+    <table><thead><tr><th>Bill Ref</th><th>Payer</th><th>Consultant</th><th class="r">Total</th><th class="r">Balance</th><th>Due</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(b => `
-      <tr style="cursor:pointer" onclick="openBillDetail(${b.bill_id})">
+      <tr class="row-click" onclick="openBillDetail(${b.bill_id})">
         <td class="num">${esc(b.bill_ref)}</td><td>${esc(b.full_name)}</td><td>${esc(b.consultant_name || '—')}</td>
         <td class="r num">${money(b.total_amount)}</td><td class="r num">${money(b.balance)}</td>
         <td class="num">${d10(b.due_date)}</td><td><span class="tag ${tagOf(b.status)}">${esc(b.status.replace('_', ' '))}</span></td>
-        </tr>`).join('') || '<tr><td colspan="7" class="empty">No bills match</td></tr>'}</tbody></table>`;
+        <td class="chev">&rsaquo;</td>
+        </tr>`).join('') || '<tr><td colspan="8" class="empty">No bills match</td></tr>'}</tbody></table>`;
 }
 
 let billLines = [];
@@ -523,8 +528,8 @@ function renderBillEditor() {
     <div id="bl_err"></div>
   `;
   $('#modalFoot').innerHTML = `
-    <button class="btn-ghost" onclick="openDemandNotice('${esc(b.bill_ref)}')">Demand Notice</button>
-    <button class="btn-ghost" onclick="openDemandBill('${esc(b.bill_ref)}')">Demand Bill</button>
+    <button class="btn-ghost" onclick="openDemandNotice('${esc(b.bill_ref)}')">Print Notice</button>
+    <button class="btn-ghost" onclick="openDemandBill('${esc(b.bill_ref)}')">Print Bill</button>
     <button class="btn-ghost" onclick="closeModal()">Close</button>`;
 }
 
@@ -589,12 +594,12 @@ async function renderReceipts() {
   try { rows = await api('/api/receipts'); } catch (e) { $('#rcptTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   window.__receiptRows = rows;
   $('#rcptTable').innerHTML = `
-    <table><thead><tr><th>Receipt Ref</th><th>Bill</th><th>Payer</th><th>Channel</th><th class="r">Amount</th><th>Issued</th><th>Verified</th></tr></thead>
+    <table><thead><tr><th>Receipt Ref</th><th>Bill</th><th>Payer</th><th>Channel</th><th class="r">Amount</th><th>Issued</th><th>Verified</th><th></th></tr></thead>
     <tbody>${rows.map(r => `
-      <tr style="cursor:pointer" onclick="openReceiptDetail(${r.receipt_id})">
+      <tr class="row-click" onclick="openReceiptDetail(${r.receipt_id})">
         <td class="num">${esc(r.receipt_ref)}</td><td class="num">${esc(r.bill_ref)}</td><td>${esc(r.full_name)}</td>
         <td>${esc(r.channel_name)}</td><td class="r num">${money2(r.amount)}</td><td class="num">${dt(r.issued_at)}</td>
-        <td class="r">${r.verified_count}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No receipts issued yet</td></tr>'}</tbody></table>`;
+        <td class="r">${r.verified_count}</td><td class="chev">&rsaquo;</td></tr>`).join('') || '<tr><td colspan="8" class="empty">No receipts issued yet</td></tr>'}</tbody></table>`;
 }
 
 function openReceiptDetail(receiptId) {
@@ -708,12 +713,12 @@ async function loadDebt() {
   try { rows = await api('/api/debt'); } catch (e) { $('#debtTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   window.__debtRows = rows;
   $('#debtTable').innerHTML = `
-    <table><thead><tr><th>Bill</th><th>Payer</th><th class="r">Balance</th><th>Ageing</th><th>Stage</th><th class="r">Reminders</th></tr></thead>
+    <table><thead><tr><th>Bill</th><th>Payer</th><th class="r">Balance</th><th>Ageing</th><th>Stage</th><th class="r">Reminders</th><th></th></tr></thead>
     <tbody>${rows.map(d => `
-      <tr style="cursor:pointer" onclick="openDebtDetail(${d.debt_id})">
+      <tr class="row-click" onclick="openDebtDetail(${d.debt_id})">
         <td class="num">${esc(d.bill_ref)}</td><td>${esc(d.full_name)}</td><td class="r num">${money(d.balance)}</td>
         <td><span class="tag ${d.ageing_bucket === 'OVER_90' ? 'bad' : d.ageing_bucket === '0_30' ? 'ok' : 'warn'}">${esc(d.ageing_bucket.replace('_', '–'))}</span></td>
-        <td>${esc(d.enforcement_stage.replace('_', ' '))}</td><td class="r">${d.reminder_count}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No open debt cases</td></tr>'}</tbody></table>`;
+        <td>${esc(d.enforcement_stage.replace('_', ' '))}</td><td class="r">${d.reminder_count}</td><td class="chev">&rsaquo;</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No open debt cases</td></tr>'}</tbody></table>`;
 }
 
 function openDebtDetail(debtId) {
@@ -754,12 +759,12 @@ async function renderRevenueItems() {
   try { rows = await api('/api/revenue-items'); } catch (e) { $('#riTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   window.__riRows = rows;
   $('#riTable').innerHTML = `
-    <table><thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Unit</th><th class="r">Current Rate</th><th>In Scope</th></tr></thead>
+    <table><thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Unit</th><th class="r">Current Rate</th><th>In Scope</th><th></th></tr></thead>
     <tbody>${rows.map(i => `
-      <tr style="cursor:pointer" onclick="openRevenueItemDetail(${i.revenue_item_id})">
+      <tr class="row-click" onclick="openRevenueItemDetail(${i.revenue_item_id})">
         <td class="num">${esc(i.harmonised_code)}</td><td>${esc(i.item_name)}</td><td>${esc(i.category_name)}</td>
         <td>${esc(i.unit_of_charge || '—')}</td><td class="r num">${i.current_rate != null ? money(i.current_rate) : '—'}</td>
-        <td><span class="tag ${i.in_initial_scope ? 'ok' : 'neutral'}">${i.in_initial_scope ? 'Yes' : 'No'}</span></td></tr>`).join('') || '<tr><td colspan="6" class="empty">No revenue items</td></tr>'}</tbody></table>`;
+        <td><span class="tag ${i.in_initial_scope ? 'ok' : 'neutral'}">${i.in_initial_scope ? 'Yes' : 'No'}</span></td><td class="chev">&rsaquo;</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No revenue items</td></tr>'}</tbody></table>`;
 }
 
 function openRevenueItemDetail(itemId) {
@@ -807,12 +812,12 @@ async function renderConsultants() {
   try { rows = await api('/api/consultants'); } catch (e) { $('#consTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   window.__consRows = rows;
   $('#consTable').innerHTML = `
-    <table><thead><tr><th>Consultant</th><th>Code</th><th class="r">Commission Rate</th><th class="r">Agents</th><th>Status</th></tr></thead>
+    <table><thead><tr><th>Consultant</th><th>Code</th><th class="r">Commission Rate</th><th class="r">Agents</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(c => `
-      <tr style="cursor:pointer" onclick="openConsultantDetail(${c.consultant_id})">
+      <tr class="row-click" onclick="openConsultantDetail(${c.consultant_id})">
         <td>${esc(c.consultant_name)}</td><td class="num">${esc(c.consultant_code)}</td>
         <td class="r num">${c.commission_rate}%</td><td class="r">${c.agents}</td>
-        <td><span class="tag ${c.status === 'ACTIVE' ? 'ok' : c.status === 'SUSPENDED' ? 'bad' : 'neutral'}">${esc(c.status)}</span></td></tr>`).join('') || '<tr><td colspan="5" class="empty">No consultants onboarded</td></tr>'}</tbody></table>`;
+        <td><span class="tag ${c.status === 'ACTIVE' ? 'ok' : c.status === 'SUSPENDED' ? 'bad' : 'neutral'}">${esc(c.status)}</span></td><td class="chev">&rsaquo;</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No consultants onboarded</td></tr>'}</tbody></table>`;
 }
 
 async function changeConsultantStatus(id, status) {
@@ -923,13 +928,13 @@ async function renderAgents() {
   try { rows = await api('/api/agents'); } catch (e) { $('#agentTable').innerHTML = `<div class="notice bad">${esc(e.message)}</div>`; return; }
   window.__agentRows = rows;
   $('#agentTable').innerHTML = `
-    <table><thead><tr><th>Code</th><th>Name</th><th>Phone</th><th>Ward</th><th>Consultant</th><th class="r">Lifetime Collected</th><th>Status</th></tr></thead>
+    <table><thead><tr><th>Code</th><th>Name</th><th>Phone</th><th>Ward</th><th>Consultant</th><th class="r">Lifetime Collected</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map(a => `
-      <tr style="cursor:pointer" onclick="openAgentDetail(${a.agent_id})">
+      <tr class="row-click" onclick="openAgentDetail(${a.agent_id})">
         <td class="num">${esc(a.agent_code)}</td><td>${esc(a.full_name)}</td><td class="num">${esc(a.phone || '—')}</td>
         <td>${esc(a.ward_name || '—')}</td><td>${esc(a.consultant_name || '—')}</td>
         <td class="r num">${money(a.lifetime_collected)}</td>
-        <td><span class="tag ${a.status === 'ACTIVE' ? 'ok' : 'neutral'}">${esc(a.status)}</span></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No field agents</td></tr>'}</tbody></table>`;
+        <td><span class="tag ${a.status === 'ACTIVE' ? 'ok' : 'neutral'}">${esc(a.status)}</span></td><td class="chev">&rsaquo;</td></tr>`).join('') || '<tr><td colspan="8" class="empty">No field agents</td></tr>'}</tbody></table>`;
 }
 
 async function openAgentForm() {
