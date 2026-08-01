@@ -197,7 +197,7 @@ function openDemandBill(billRef) {
 }
 
 /* ---------------- dashboard ---------------- */
-const CHANNEL_COLORS = { POS: '#13543F', OTC: '#C08B2C', IB_MB: '#1C6B51', USSD: '#9A6B00', FIRSTMONIE: '#52635C' };
+const CHANNEL_COLORS = { POS: '#13543F', OTC: '#C08B2C', IB_MB: '#2B6E7A', USSD: '#9A6B00', FIRSTMONIE: '#52635C' };
 
 async function renderDashboard() {
   setPage('<div class="empty">Loading dashboard…</div>');
@@ -226,7 +226,7 @@ async function renderDashboard() {
     <div class="grid g4" style="margin-bottom:16px">
       <div class="card stat"><div class="label">Total Billed</div><div class="value">${money(d.billed)}</div><div class="delta">${d.bills} bills issued</div></div>
       <div class="card stat accent"><div class="label">Total Collected</div><div class="value">${money(d.collected)}</div><div class="delta">${d.billed ? Math.round(d.collected / d.billed * 100) : 0}% of billed</div></div>
-      <div class="card stat"><div class="label">Outstanding</div><div class="value">${money(d.outstanding)}</div><div class="delta">${d.assessments} assessments</div></div>
+      <div class="card stat info"><div class="label">Outstanding</div><div class="value">${money(d.outstanding)}</div><div class="delta">${d.assessments} assessments</div></div>
       <div class="card stat"><div class="label">Registered Payers</div><div class="value">${d.payers.toLocaleString()}</div><div class="delta">${d.active_agents} active field agents</div></div>
     </div>
     <div class="grid g2" style="margin-bottom:16px">
