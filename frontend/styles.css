@@ -100,15 +100,15 @@ a:hover { text-decoration: underline; }
 
 .nav { padding: 12px 10px 24px; flex: 1; }
 .nav-label {
-  font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: #6E8C80;
-  padding: 14px 10px 7px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--brass);
+  font-weight: 700; padding: 14px 10px 7px; opacity: .85;
 }
 .nav a {
   display: flex; align-items: center; gap: 10px; margin: 2px 8px; padding: 8px 10px; border-radius: 9px;
   color: #C7DAD1; text-decoration: none; font-size: 13.5px; cursor: pointer; transition: .12s;
 }
-.nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
-.nav a.active { background: rgba(192,139,44,.16); color: #fff; font-weight: 600; }
+.nav a:hover { background: rgba(43,110,122,.25); color: #fff; }
+.nav a.active { background: var(--brass); color: var(--green-900); font-weight: 700; }
 .nav a .ico { width: 16px; text-align: center; opacity: .85; }
 .nav a .badge {
   margin-left: auto; background: var(--brass); color: var(--green-900); font-size: 10px;
@@ -170,13 +170,13 @@ a:hover { text-decoration: underline; }
 }
 
 .card {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 18px; box-shadow: var(--shadow);
+  background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--green-700);
+  border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
 }
-.card h3 { font-size: 13px; font-weight: 600; margin-bottom: 14px; letter-spacing: -.005em; }
+.card h3 { font-size: 13px; font-weight: 600; margin-bottom: 14px; letter-spacing: -.005em; color: var(--green-800); }
 .card .card-note { font-size: 12px; color: var(--ink-60); margin-bottom: 12px; }
 
-.stat { position: relative; }
+.stat { position: relative; border-top: 1px solid var(--line); }
 .stat::before {
   content: ''; position: absolute; top: 16px; right: 16px; width: 7px; height: 7px;
   border-radius: 50%; background: var(--green-600);
@@ -191,11 +191,12 @@ a:hover { text-decoration: underline; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 thead th {
   text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--ink-40); font-weight: 600; padding: 9px 10px; border-bottom: 1px solid var(--line);
+  color: var(--green-800); font-weight: 700; padding: 10px; background: var(--green-100);
   white-space: nowrap;
 }
 tbody td { padding: 10px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
-tbody tr:hover { background: var(--surface-2); }
+tbody tr:nth-child(even) td { background: rgba(28,107,81,.045); }
+tbody tr:hover { background: var(--brass-lt); }
 td.r, th.r { text-align: right; }
 .table-wrap { overflow-x: auto; }
 
